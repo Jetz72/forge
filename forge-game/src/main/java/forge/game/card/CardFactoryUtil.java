@@ -1806,7 +1806,7 @@ public class CardFactoryUtil {
             inst.addTrigger(parsedTrigger);
         } else if (keyword.startsWith("Squad")) {
             final String trigScript = "Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | " +
-                    "ValidCard$ Card.Self+wasCast | CheckSVar$ SquadAmount | Secondary$ True | " +
+                    "ValidCard$ Card.Self+linkedCastSA | CheckSVar$ SquadAmount | Secondary$ True | " +
                     "TriggerDescription$ When this creature enters the battlefield, create that many tokens that " +
                     "are copies of it.";
             final String abString = "DB$ CopyPermanent | Defined$ TriggeredCard | NumCopies$ SquadAmount";
@@ -2793,6 +2793,7 @@ public class CardFactoryUtil {
             newSA.setAlternativeCost(AlternativeCost.Emerge);
 
             newSA.setDescription(sa.getDescription() + " (Emerge)");
+            newSA.putParam("AfterDescription", "(Emerge)");
             newSA.setIntrinsic(intrinsic);
             inst.addSpellAbility(newSA);
         } else if (keyword.startsWith("Embalm")) {
@@ -3148,11 +3149,7 @@ public class CardFactoryUtil {
             final String[] n = keyword.split(":");
             final SpellAbility sa = card.getFirstSpellAbility();
             sa.setMultiKickerManaCost(new ManaCost(new ManaCostParser(n[1])));
-            if (keyword.endsWith("Generic")) {
-                sa.addAnnounceVar("Pseudo-multikicker");
-            } else {
-                sa.addAnnounceVar("Multikicker");
-            }
+            sa.addAnnounceVar("Multikicker");
         } else if (keyword.startsWith("Mutate")) {
             final String[] params = keyword.split(":");
             final String cost = params[1];
