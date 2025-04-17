@@ -23,6 +23,7 @@ import forge.GameCommand;
 import forge.StaticData;
 import forge.card.*;
 import forge.card.CardDb.CardArtPreference;
+import forge.card.CardType.Supertype;
 import forge.card.mana.ManaCost;
 import forge.card.mana.ManaCostParser;
 import forge.game.*;
@@ -38,7 +39,6 @@ import forge.game.event.*;
 import forge.game.event.GameEventCardDamaged.DamageType;
 import forge.game.keyword.*;
 import forge.game.mana.ManaCostBeingPaid;
-import forge.game.phase.PhaseType;
 import forge.game.player.Player;
 import forge.game.player.PlayerCollection;
 import forge.game.replacement.*;
@@ -65,7 +65,6 @@ import org.apache.commons.lang3.tuple.Triple;
 
 import java.util.*;
 import java.util.Map.Entry;
-import java.util.concurrent.Callable;
 
 import static java.lang.Math.max;
 
@@ -253,6 +252,7 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
 
     private PlayerCollection targetedFromThisTurn = new PlayerCollection();
 
+    private long worldTimestamp = -1;
     private long bestowTimestamp = -1;
     private long transformedTimestamp = 0;
     private long prototypeTimestamp = -1;
@@ -1078,7 +1078,22 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
     }
 
     public final boolean isAdventureCard() {
-        return hasState(CardStateName.Adventure);
+        if (!hasState(CardStateName.Secondary))
+            return false;
+        return getState(CardStateName.Secondary).getType().hasSubtype("Adventure");
+    }
+
+    public final boolean isOnAdventure() {
+        if (!isAdventureCard())
+            return false;
+        if (getExiledWith() == null)
+            return false;
+        if (!CardStateName.Secondary.equals(getExiledWith().getCurrentStateName()))
+            return false;
+        if (!getExiledWith().getType().hasSubtype("Adventure")) {
+            return false;
+        }
+        return true;
     }
 
     public final boolean isBackSide() {
@@ -2004,11 +2019,6 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
         return currentState.getSVars();
     }
 
-    @Override
-    public Map<String, String> getDirectSVars() {
-        return ImmutableMap.of();
-    }
-
     public final void setSVars(final Map<String, String> newSVars) {
         currentState.setSVars(newSVars);
     }
@@ -2412,9 +2422,17 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
                     final String[] k = keyword.split(":");
                     sbLong.append(k[2]).append("\r\n");
                 } else if (keyword.startsWith("Enchant")) {
-                    String k = keyword;
-                    k = TextUtil.fastReplace(k, "Curse", "");
-                    sbLong.append(k).append("\r\n");
+                    String m[] = keyword.split(":");
+                    String desc;
+                    if (m.length > 2) {
+                        desc = m[2];
+                    } else {
+                        desc = m[1];
+                        if (CardType.isACardType(desc) || "Permanent".equals(desc) || "Player".equals(desc) || "Opponent".equals(desc)) {
+                            desc = desc.toLowerCase();
+                        }
+                    }
+                    sbLong.append("Enchant ").append(desc).append("\r\n");
                 } else if (keyword.startsWith("Ripple")) {
                     sbLong.append(TextUtil.fastReplace(keyword, ":", " ")).append("\r\n");
                 } else if (keyword.startsWith("Morph") || keyword.startsWith("Megamorph")
@@ -3031,9 +3049,18 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
 
             // add Adventure to AbilityText
             if (sa.isAdventure() && state.getStateName().equals(CardStateName.Original)) {
-                CardState advState = getState(CardStateName.Adventure);
+                CardState advState = getState(CardStateName.Secondary);
                 StringBuilder sbSA = new StringBuilder();
                 sbSA.append(Localizer.getInstance().getMessage("lblAdventure"));
+                sbSA.append(" — ").append(CardTranslation.getTranslatedName(advState.getName()));
+                sbSA.append(" ").append(sa.getPayCosts().toSimpleString());
+                sbSA.append(": ");
+                sbSA.append(sAbility);
+                sAbility = sbSA.toString();
+            } else if (sa.isOmen() && state.getStateName().equals(CardStateName.Original)) {
+                CardState advState = getState(CardStateName.Secondary);
+                StringBuilder sbSA = new StringBuilder();
+                sbSA.append(Localizer.getInstance().getMessage("lblOmen"));
                 sbSA.append(" — ").append(CardTranslation.getTranslatedName(advState.getName()));
                 sbSA.append(" ").append(sa.getPayCosts().toSimpleString());
                 sbSA.append(": ");
@@ -3453,21 +3480,6 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
         return Iterables.getFirst(currentState.getNonManaAbilities(), null);
     }
 
-    /**
-     * @return the first {@link SpellAbility} marked as a Spell with API type
-     * {@link ApiType#Attach} in this {@link Card}, or {@code null} if no such
-     * object exists.
-     * @see SpellAbility#isSpell()
-     */
-    public final SpellAbility getFirstAttachSpell() {
-        for (final SpellAbility sa : getSpells()) {
-            if (sa.getApi() == ApiType.Attach && !sa.isSuppressed()) {
-                return sa;
-            }
-        }
-        return null;
-    }
-
     public final SpellPermanent getSpellPermanent() {
         for (final SpellAbility sa : currentState.getNonManaAbilities()) {
             if (sa instanceof SpellPermanent) {
@@ -3578,9 +3590,9 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
                 }
             }
         } else {
-            // Adenture may only be cast not from Battlefield
-            if (isAdventureCard() && state.getView().getState() == CardStateName.Original) {
-                for (SpellAbility sa : getState(CardStateName.Adventure).getSpellAbilities()) {
+            // Adventure and Omen may only be cast not from Battlefield
+            if (hasState(CardStateName.Secondary) && state.getView().getState() == CardStateName.Original) {
+                for (SpellAbility sa : getState(CardStateName.Secondary).getSpellAbilities()) {
                     if (mana == null || mana == sa.isManaAbility()) {
                         list.add(sa);
                     }
@@ -4459,11 +4471,13 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
     public final void addCloneState(CardCloneStates states, final long timestamp) {
         clonedStates.put(timestamp, states);
         updateCloneState(true);
+        updateWorldTimestamp(timestamp);
     }
 
     public final boolean removeCloneState(final long timestamp) {
         if (clonedStates.remove(timestamp) != null) {
             updateCloneState(true);
+            updateWorldTimestamp(timestamp);
             return true;
         }
         return false;
@@ -4912,14 +4926,8 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
         return true;
     }
 
-    public final boolean canUntap(Player phase, Boolean predict) {
-        if (predict != null && predict) {
-            Callable<Boolean> proc = () -> {
-                return canUntap(phase, null);
-            };
-            return getGame().getPhaseHandler().withContext(proc, phase, PhaseType.UNTAP);
-        }
-        if (predict != null && !tapped) { return false; }
+    public final boolean canUntap(Player phase, boolean predict) {
+        if (!predict && !tapped) { return false; }
         if (phase != null && isExertedBy(phase)) {
             return false;
         }
@@ -4927,6 +4935,7 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
             return false;
         }
         Map<AbilityKey, Object> runParams = AbilityKey.mapFromAffected(this);
+        runParams.put(AbilityKey.Player, phase);
         return !getGame().getReplacementHandler().cantHappenCheck(ReplacementType.Untap, runParams);
     }
 
@@ -4939,7 +4948,9 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
             return false;
         }
 
-        if (getGame().getReplacementHandler().run(ReplacementType.Untap, AbilityKey.mapFromAffected(this)) != ReplacementResult.NotReplaced) {
+        Map<AbilityKey, Object> runParams = AbilityKey.mapFromAffected(this);
+        runParams.put(AbilityKey.Player, phase);
+        if (getGame().getReplacementHandler().run(ReplacementType.Untap, runParams) != ReplacementResult.NotReplaced) {
             return false;
         }
 
@@ -5556,10 +5567,9 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
             if (StringUtils.isNumeric(s)) {
                count += Integer.parseInt(s);
             } else {
-                StaticAbility st = inst.getStatic();
                 // TODO make keywordinterface inherit from CardTrait somehow, or invent new interface
-                if (st != null && st.hasSVar(s)) {
-                    count += AbilityUtils.calculateAmount(this, st.getSVar(s), null);
+                if (inst.hasSVar(s)) {
+                    count += AbilityUtils.calculateAmount(this, inst.getSVar(s), null);
                 } else {
                     String svar = StringUtils.join(parse);
                     if (state.hasSVar(svar)) {
@@ -6889,7 +6899,7 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
         addChangedCardTypes(new CardType(Collections.singletonList("Aura"), true),
                 new CardType(Collections.singletonList("Creature"), true),
                 false, EnumSet.of(RemoveType.EnchantmentTypes), bestowTimestamp, 0, updateView, false);
-        addChangedCardKeywords(Collections.singletonList("Enchant creature"), Lists.newArrayList(),
+        addChangedCardKeywords(Collections.singletonList("Enchant:Creature"), Lists.newArrayList(),
                 false, bestowTimestamp, null, updateView);
     }
 
@@ -6935,6 +6945,17 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
 
     public boolean equalsWithGameTimestamp(Card c) {
         return equals(c) && c.getGameTimestamp() == gameTimestamp;
+    }
+
+    public long getWorldTimestamp() {
+        return worldTimestamp;
+    }
+    public void updateWorldTimestamp(long ts) {
+        if (!getType().hasSupertype(Supertype.World)) {
+            worldTimestamp = -1;
+        } else if (worldTimestamp == -1) {
+            worldTimestamp = ts;
+        }
     }
 
     public String getProtectionKey() {
@@ -7071,12 +7092,15 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
             return true;
         }
 
-        // CantTarget static abilities
+        if (isPhasedOut()) {
+            return false;
+        }
+
         if (StaticAbilityCantTarget.cantTarget(this, sa)) {
             return false;
         }
 
-        return !isInPlay() || !isPhasedOut();
+        return true;
     }
 
     public final boolean canBeControlledBy(final Player newController) {
@@ -7085,30 +7109,21 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
 
     @Override
     protected final boolean canBeEnchantedBy(final Card aura) {
-        SpellAbility sa = aura.getFirstAttachSpell();
-        TargetRestrictions tgt = null;
-        if (sa != null) {
-            tgt = sa.getTargetRestrictions();
+        if (!aura.hasKeyword(Keyword.ENCHANT)) {
+            return false;
         }
-
-        if (tgt != null) {
-            boolean zoneValid = false;
-            // check the zone types
-            for (final ZoneType zt : tgt.getZone()) {
-                if (isInZone(zt)) {
-                    zoneValid = true;
-                    break;
-                }
-            }
-            if (!zoneValid) {
+        for (KeywordInterface ki : aura.getKeywords(Keyword.ENCHANT)) {
+            String k = ki.getOriginal();
+            String m[] = k.split(":");
+            String v = m[1];
+            if (!isValid(v.split(","), aura.getController(), aura, null)) {
                 return false;
             }
-
-            // check valid
-            return isValid(tgt.getValidTgts(), aura.getController(), aura, sa);
+            if (!v.contains("inZone") && !isInPlay()) {
+                return false;
+            }
         }
-
-        return false;
+        return true;
     }
 
     @Override
@@ -7614,9 +7629,8 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
         final List<SpellAbility> abilities = Lists.newArrayList();
         for (SpellAbility sa : getSpellAbilities()) {
             //adventure spell check
-            if (isAdventureCard() && sa.isAdventure()) {
-                if (getExiledWith() != null && getExiledWith().equals(this) && CardStateName.Adventure.equals(getExiledWith().getCurrentStateName()))
-                    continue; // skip since it's already on adventure
+            if (isAdventureCard() && sa.isAdventure() && isOnAdventure()) {
+                continue; // skip since it's already on adventure
             }
             //add alternative costs as additional spell abilities
             abilities.add(sa);
@@ -8256,9 +8270,6 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
 
     public void updateRooms() {
         if (!isRoom()) {
-            return;
-        }
-        if (!isInPlay()) {
             return;
         }
         if (isFaceDown()) {
