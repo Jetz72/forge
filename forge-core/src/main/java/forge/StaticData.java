@@ -94,7 +94,8 @@ public class StaticData {
         this.enableUnknownCards = enableUnknownCards;
         lastInstance = this;
 
-        editions.append(new CardEdition.Collection(new CardEdition.Reader(new File(customEditionsFolder), true)));
+        if(customEditionsFolder != null)
+            editions.append(new CardEdition.Collection(new CardEdition.Reader(new File(customEditionsFolder), true)));
 
         {
             if (!loadNonLegalCards) {

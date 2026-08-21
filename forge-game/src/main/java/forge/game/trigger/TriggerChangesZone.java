@@ -210,11 +210,6 @@ public class TriggerChangesZone extends Trigger {
             return;
         }
 
-        // in case the game is null (for GUI) the later check does fail
-        if (getHostCard().getGame() == null) {
-            return;
-        }
-
         if (!hasParam("ValidCard")) {
             return;
         }
