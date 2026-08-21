@@ -78,7 +78,8 @@ public class StaticData {
         Set<String> funnyCards = new HashSet<>();
         Set<String> filtered = new HashSet<>();
 
-        editions.append(new CardEdition.Collection(new CardEdition.Reader(new File(customEditionsFolder), true)));
+        if(customEditionsFolder != null)
+            editions.append(new CardEdition.Collection(new CardEdition.Reader(new File(customEditionsFolder), true)));
 
         {
             final Map<String, CardRules> regularCards = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);

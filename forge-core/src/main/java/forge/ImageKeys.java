@@ -414,6 +414,8 @@ public final class ImageKeys {
         return hasImage(pc, false);
     }
     public static boolean hasImage(PaperCard pc, boolean update) {
+        if(CACHE_BOOSTER_PICS_DIR == null) //Running headless.
+            return false;
         Boolean editionHasImage = editionImageLookup.get(pc.getEdition());
         if (editionHasImage == null) {
             String setFolder = getSetFolder(pc.getEdition());
