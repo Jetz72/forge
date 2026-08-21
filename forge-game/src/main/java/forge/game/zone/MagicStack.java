@@ -48,6 +48,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * <p>
@@ -977,6 +978,10 @@ public class MagicStack /* extends MyObservable */ implements Iterable<SpellAbil
     @Override
     public Iterator<SpellAbilityStackInstance> iterator() {
         return stack.iterator();
+    }
+
+    public Stream<SpellAbilityStackInstance> stream() {
+        return stack.stream();
     }
 
     public Iterator<SpellAbilityStackInstance> reverseIterator() {

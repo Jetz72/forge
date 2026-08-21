@@ -54,24 +54,24 @@ public class GameState {
         ZONES.put(ZoneType.Sideboard, "sideboard");
     }
 
-    static class PlayerState {
-        private int life = -1;
-        private String counters = "";
-        private String manaPool = "";
-        private String persistentMana = "";
-        private int landsPlayed = 0;
-        private int landsPlayedLastTurn = 0;
-        private int numRingTemptedYou = 0;
-        private int speed = 0;
-        private String precast = null;
-        private String putOnStack = null;
-        private final Map<ZoneType, String> cardTexts = new EnumMap<>(ZoneType.class);
+    protected static class PlayerState {
+        protected int life = -1;
+        protected String counters = "";
+        protected String manaPool = "";
+        protected String persistentMana = "";
+        protected int landsPlayed = 0;
+        protected int landsPlayedLastTurn = 0;
+        protected int numRingTemptedYou = 0;
+        protected int speed = 0;
+        protected String precast = null;
+        protected String putOnStack = null;
+        protected final Map<ZoneType, String> cardTexts = new EnumMap<>(ZoneType.class);
     }
-    private final List<PlayerState> playerStates = new ArrayList<>();
+    protected final List<PlayerState> playerStates = new ArrayList<>();
 
     private boolean puzzleCreatorState = false;
 
-    private final Map<Integer, Card> idToCard = new HashMap<>();
+    protected final Map<Integer, Card> idToCard = new HashMap<>();
     private final Map<Card, Integer> cardToAttachId = new HashMap<>();
     private final Map<Card, Player> cardToEnchantPlayerId = new HashMap<>();
     private final Map<Card, Integer> markedDamage = new HashMap<>();
@@ -93,8 +93,8 @@ public class GameState {
     private final Set<Card> cardsReferencedByID = new HashSet<>();
     private final Set<Card> cardsWithoutETBTrigs = new HashSet<>();
 
-    private String tChangePlayer = "NONE";
-    private String tChangePhase = "NONE";
+    protected String tChangePlayer = "NONE";
+    protected String tChangePhase = "NONE";
 
     private String tAdvancePhase = "NONE";
 
@@ -161,7 +161,7 @@ public class GameState {
     public void initFromGame(Game game) {
         playerStates.clear();
         for (Player player : game.getPlayers()) {
-            PlayerState p = new PlayerState();
+            PlayerState p = createPlayerState(playerStates.size());
             p.life = player.getLife();
             p.landsPlayed = player.getLandsPlayedThisTurn();
             p.landsPlayedLastTurn = player.getLandsPlayedLastTurn();
@@ -265,12 +265,12 @@ public class GameState {
                 String suffix = c.getTopMergedCard().hasPaperFoil() ? "+" : "";
                 // we have to go by the current top card name here
                 newText.append(c.getTopMergedCard().getPaperCard().getName()).append(suffix).append("|Set:")
-                        .append(c.getTopMergedCard().getPaperCard().getEdition()).append("|Art:")
-                        .append(c.getTopMergedCard().getPaperCard().getArtIndex());
+                        .append(c.getTopMergedCard().getPaperCard().getEdition()).append("|CN:")
+                        .append(c.getTopMergedCard().getPaperCard().getCollectorNumber());
             } else {
                 String suffix = c.hasPaperFoil() ? "+" : "";
                 newText.append(c.getPaperCard().getName()).append(suffix).append("|Set:").append(c.getPaperCard().getEdition())
-                        .append("|Art:").append(c.getPaperCard().getArtIndex());
+                        .append("|CN:").append(c.getPaperCard().getCollectorNumber());
             }
         }
         if (c.isCommander()) {
@@ -280,7 +280,7 @@ public class GameState {
             newText.append("|IsRingBearer");
         }
 
-        if (cardsReferencedByID.contains(c)) {
+        if (useActualCardID() || cardsReferencedByID.contains(c)) {
             newText.append("|Id:").append(c.getId());
         }
 
@@ -411,9 +411,7 @@ public class GameState {
             if (c.isFaceDown()) {
                 newText.append("|FaceDown"); // Exiled face down
             }
-            if (c.isAdventureCard() && c.getZone().is(ZoneType.Exile)) {
-                // TODO: this will basically default all exiled cards with Adventure to being "On Adventure".
-                // Need to figure out a better way to detect if it's actually on adventure.
+            if (c.isAdventureCard() && c.isOnAdventure()) {
                 newText.append("|OnAdventure");
             }
             if (c.isForetold()) {
@@ -450,6 +448,11 @@ public class GameState {
         }
 
         cardTexts.put(zoneType, newText.toString());
+    }
+
+    //Used for testing. If true, "|Id:" parameters on cards will set the actual IDs of the resulting card object.
+    protected boolean useActualCardID() {
+        return false;
     }
 
     private String countersToString(Multiset<CounterType> counters) {
@@ -497,9 +500,9 @@ public class GameState {
     }
 
 
-    private PlayerState getPlayerState(int index) {
+    protected PlayerState getPlayerState(int index) {
         while (index >= playerStates.size()) {
-            playerStates.add(new PlayerState());
+            playerStates.add(createPlayerState(playerStates.size()));
         }
         return playerStates.get(index);
     }
@@ -513,8 +516,12 @@ public class GameState {
             return getPlayerState(Integer.parseInt(String.valueOf(key.charAt(1))));
         } else {
             System.err.println("Unknown player state key: " + key);
-            return new PlayerState();
+            return createPlayerState(playerStates.size());
         }
+    }
+
+    protected PlayerState createPlayerState(int index) {
+        return new PlayerState();
     }
 
     protected void parseLine(String line) {
@@ -1247,6 +1254,7 @@ public class GameState {
             }
 
             int artID = -1;
+            String collectorNumber = null;
             for (final String info : cardinfo) {
                 if (info.startsWith("Art:")) {
                     try {
@@ -1256,6 +1264,27 @@ public class GameState {
                     }
                     break;
                 }
+                else if (info.startsWith("CN:")) {
+                    collectorNumber = info.substring(info.indexOf(':') + 1);
+                    break;
+                }
+            }
+
+            int cardID = -1;
+            if(useActualCardID()) {
+                for (final String info : cardinfo) {
+                    if (info.startsWith("Id:")) {
+                        try {
+                            cardID = Integer.parseInt(info.substring(info.indexOf(':') + 1));
+                        } catch (Exception e) {
+                            break;
+                        }
+                        break;
+                    }
+                }
+            }
+            if(cardID == -1) {
+                cardID = player.getGame().nextCardId();
             }
 
             Card c;
@@ -1263,7 +1292,7 @@ public class GameState {
             if (cardinfo[0].startsWith("t:")) {
                 // TODO Make sure Game State conversion works with new tokens
                 String tokenStr = cardinfo[0].substring(2);
-                c = new TokenInfo(tokenStr).makeOneToken(player);
+                c = new TokenInfo(tokenStr).makeOneToken(player, cardID);
             } else if (cardinfo[0].startsWith("T:")) {
                 String tokenStr = cardinfo[0].substring(2);
                 PaperToken token = StaticData.instance().getAllTokens().getToken(tokenStr,
@@ -1272,15 +1301,19 @@ public class GameState {
                     System.err.println("ERROR: Tried to create a non-existent token named " + cardinfo[0] + " when loading game state!");
                     continue;
                 }
-                c = CardFactory.getCard(token, player, player.getGame());
+                c = CardFactory.getCard(token, player, cardID, player.getGame());
             } else {
-                PaperCard pc = StaticData.instance().getCommonCards().getCard(cardinfo[0], setCode, artID);
+                PaperCard pc;
+                if(collectorNumber != null)
+                    pc = StaticData.instance().getCommonCards().getCard(cardinfo[0], setCode, collectorNumber);
+                else
+                    pc = StaticData.instance().getCommonCards().getCard(cardinfo[0], setCode, artID);
                 if (pc == null) {
                     System.err.println("ERROR: Tried to create a non-existent card named " + cardinfo[0] + " (set: " + (setCode == null ? "any" : setCode) + ") when loading game state!");
                     continue;
                 }
 
-                c = Card.fromPaperCard(pc, player);
+                c = CardFactory.getCard(pc, player, cardID, player.getGame());
                 if (setCode != null) {
                     hasSetCurSet = true;
                 }
