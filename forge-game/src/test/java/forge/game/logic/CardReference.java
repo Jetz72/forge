@@ -1,7 +1,6 @@
 package forge.game.logic;
 
 import forge.game.Game;
-import forge.game.GameEntity;
 import forge.game.IIdentifiable;
 import forge.game.card.Card;
 import forge.game.zone.ZoneType;
@@ -21,6 +20,8 @@ public class CardReference extends GameLogicTestReference {
 
     protected int ownerIndex = -1;
     protected ZoneType zone;
+    /** If true, this card reference is already in an explicit player zone list, and can't be implicitly placed elsewhere. */
+    protected boolean explicitlyPlaced = false;
 
     private PaperCard card;
 
@@ -114,6 +115,14 @@ public class CardReference extends GameLogicTestReference {
             this.ownerIndex = ownerIndex;
     }
 
+    /* package */ void setExplicitlyPlaced() {
+        this.explicitlyPlaced = true;
+    }
+
+    /* package */ boolean isExplicitlyPlaced() {
+        return this.explicitlyPlaced;
+    }
+
     @Override
         /* package */ boolean refersTo(IIdentifiable o) {
         return o.getId() >= this.id && o.getId() < this.id + this.quantity;
@@ -135,10 +144,6 @@ public class CardReference extends GameLogicTestReference {
     @Override
     public int getQuantity() {
         return quantity;
-    }
-
-    /* package */ boolean isInferredBasics() {
-        return this.referenceIndex == -99;
     }
 
     @Override

@@ -43,6 +43,7 @@ public class GameLogicTestSetup extends GameState {
             for(CardReference c : refs) {
                 c.setInferredOwner(this.index);
                 c.setInferredZone(zone);
+                c.setExplicitlyPlaced();
             }
             this.explicitCardLists.put(zone, refs);
             return this;
@@ -55,6 +56,11 @@ public class GameLogicTestSetup extends GameState {
          */
         public PlayerSetup lands(String... landReferences) {
             this.explicitLands = Arrays.stream(landReferences).map(referencePool::getCard).toList();
+            for(CardReference c : explicitLands) {
+                c.setInferredOwner(this.index);
+                c.setInferredZone(ZoneType.Battlefield);
+                c.setExplicitlyPlaced();
+            }
             return this;
         }
 
@@ -211,6 +217,8 @@ public class GameLogicTestSetup extends GameState {
             if(landCounts.isEmpty())
                 continue;
             List<CardReference> lands = referencePool.loadLands(player.index, landCounts);
+            for(CardReference land : lands)
+                land.setExplicitlyPlaced(); //Leave these out of cardsPerZonePerPlayer.
             playerLands.put(player.index, lands);
         }
 
@@ -222,8 +230,8 @@ public class GameLogicTestSetup extends GameState {
         Map<Integer, Map<ZoneType, List<CardReference>>> cardsPerZonePerPlayer = new HashMap<>(4);
 
         for(CardReference ref : this.referencePool.getAllReferences()) {
-            if(ref.isInferredBasics())
-                continue; //Already have these in playerLands.
+            if(ref.isExplicitlyPlaced())
+                continue; //Cards are already defined in a zone or in playerLands.
             int ownerIndex = ref.ownerIndex;
             if(ownerIndex < 0)
                 throw new AssertionError("Unknown owner for card reference - " + ref);
