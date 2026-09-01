@@ -1,10 +1,10 @@
 package forge.game.logic;
 
 import forge.StaticData;
-import forge.game.GameEntity;
-import forge.game.GameEntityView;
-import forge.game.GameObject;
 import forge.game.IIdentifiable;
+import forge.game.card.Card;
+import forge.game.spellability.SpellAbility;
+import forge.game.spellability.SpellAbilityStackInstance;
 import forge.game.zone.ZoneType;
 
 import java.util.*;
@@ -15,21 +15,9 @@ import static forge.game.logic.PlayerReference.PLAYER_REFERENCE_PATTERN;
 /**
  * A reference to an object that we expect to exist when a GameLogicTest is resolving.
  */
-abstract class GameLogicTestReference {
+abstract class TestReference <T extends IIdentifiable> implements ITestReference<T> {
 
     protected int id = -1;
-
-    /* package */ CardReference ensureCard() {
-        if(this instanceof CardReference c)
-            return c;
-        throw new IllegalArgumentException("A player reference cannot be used here.");
-    }
-
-    /* package */ PlayerReference ensurePlayer() {
-        if(this instanceof PlayerReference p)
-            return p;
-        throw new IllegalArgumentException("A card reference cannot be used here.");
-    }
 
     /* package */ void setID(int id) {
         assert(this.id == -1);
@@ -41,28 +29,30 @@ abstract class GameLogicTestReference {
         return this.id;
     }
 
-    /* package */ boolean refersTo(IIdentifiable o) {
+    @Override
+    public boolean refersTo(IIdentifiable o) {
         return this.id == o.getId();
     }
 
-    /* package */ int getQuantity() {
+    @Override
+    public int getQuantity() {
         return 1; //Only CardReferences have quantities.
-    }
-
-    /* package */ void assertSingular() {
-        if(this.getQuantity() > 1)
-            throw new UnsupportedOperationException("Quantity > 1 is not allowed here.");
     }
 
     /* package */ static class ReferencePool {
         private StaticData staticData;
         private final Map<String, CardReference> pool = new LinkedHashMap<>();
         private final Map<Integer, PlayerReference> playerPool = new HashMap<>(4);
+        private final Map<String, LiveReference<?>> livePool = new HashMap<>();
         private int maxID = 0;
 
         /* package */ ReferencePool() {}
 
-        public CardReference getCard(String implicitReference) {
+        public ICardReference getCard(String implicitReference) {
+            if(this.livePool.containsKey(implicitReference))
+                return this.livePool.get(implicitReference).ensureCard();
+            if(LiveReference.LIVE_REFERENCE_PATTERN.matcher(implicitReference).matches())
+                throw new GameLogicTestException("Unable to find live reference %s", implicitReference);
             if(this.pool.containsKey(implicitReference))
                 return this.pool.get(implicitReference);
             Matcher matcher = CardReference.IMPLICIT_REF_PATTERN.matcher(implicitReference);
@@ -78,6 +68,10 @@ abstract class GameLogicTestReference {
 
         public PlayerReference getPlayer(String implicitReference) {
             int playerIndex;
+            if(this.livePool.containsKey(implicitReference))
+                return this.livePool.get(implicitReference).ensurePlayer(); //This will probably never happen.
+            if(LiveReference.LIVE_REFERENCE_PATTERN.matcher(implicitReference).matches())
+                throw new GameLogicTestException("Unable to find live reference %s", implicitReference);
             if (implicitReference.equals("Self"))
                 playerIndex = 0;
             else if (implicitReference.equals("Opponent"))
@@ -103,13 +97,84 @@ abstract class GameLogicTestReference {
             return ref;
         }
 
-        public GameLogicTestReference get(String implicitReference) {
+        public StackReference getStack(String implicitReference) {
+            if(!LiveReference.LIVE_REFERENCE_PATTERN.matcher(implicitReference).matches())
+                throw new GameLogicTestException("Cannot use concrete reference '%s' here.", implicitReference); //Need to use a <Label>, assigned via `.label` after something like `.expectTrigger` or `.activate`.
+            if(!this.livePool.containsKey(implicitReference))
+                throw new GameLogicTestException("Unable to find live reference %s", implicitReference);
+            LiveReference<?> out = livePool.get(implicitReference);
+            if(out instanceof StackReference s)
+                return s;
+            throw new GameLogicTestException("Live reference `%s` is not a StackReference.", implicitReference);
+        }
+
+        public ITestReference<?> get(String implicitReference) {
+            if(LiveReference.LIVE_REFERENCE_PATTERN.matcher(implicitReference).matches()) {
+                if(!livePool.containsKey(implicitReference))
+                    throw new GameLogicTestException("Unable to find live reference %s", implicitReference);
+                return livePool.get(implicitReference);
+            }
             if(PlayerReference.RELATIVE_REF_NAMES.contains(implicitReference) || PlayerReference.PLAYER_REFERENCE_PATTERN.matcher(implicitReference).matches())
                 return getPlayer(implicitReference);
             else if(CardReference.IMPLICIT_REF_PATTERN.matcher(implicitReference).matches())
                 return getCard(implicitReference);
             else
                 throw new IllegalArgumentException("Syntax error in reference: " + implicitReference);
+        }
+
+        public void putLiveCards(String label, Set<Card> cards) {
+            label = wrapLiveLabelText(label);
+            if(livePool.containsKey(label)) {
+                LiveReference<?> current = livePool.get(label);
+                if(!(current instanceof LiveCardReference cardRef))
+                    throw new GameLogicTestException("Tried to resolve %s as a card reference, but it was defined as '%s'.", label, current.getClass());
+                if(current.resolved == null) {
+                    cardRef.setResolved(cards);
+                    return;
+                }
+                if(!cards.equals(current.resolved))
+                    throw new GameLogicTestException("Tried to resolve %s twice with different data. Original: %s; New: %s", label, current.resolved, cards);
+                return;
+            }
+            assert(false); //Should be initialized already.
+            LiveCardReference ref = new LiveCardReference(label);
+            ref.setResolved(cards);
+            livePool.put(label, ref);
+        }
+
+        public void putLiveStack(String label, Set<SpellAbility> stack) {
+            label = wrapLiveLabelText(label);
+            if(livePool.containsKey(label)) {
+                LiveReference<?> current = livePool.get(label);
+                if(!(current instanceof StackReference stackRef))
+                    throw new GameLogicTestException("Tried to resolve %s as a stack reference, but it was defined as '%s'.", label, current.getClass());
+                if(current.resolved == null) {
+                    stackRef.setResolved(stack);
+                    return;
+                }
+                if(!stack.equals(current.resolved))
+                    throw new GameLogicTestException("Tried to resolve %s twice with different data. Original: %s; New: %s", label, current.resolved, stack);
+                return;
+            }
+            assert(false); //Should be initialized already.
+            StackReference ref = new StackReference(label);
+            ref.setResolved(stack);
+            livePool.put(label, ref);
+        }
+
+        /* package */ void initLiveCards(String label) {
+            label = wrapLiveLabelText(label);
+            livePool.put(label, new LiveCardReference(label));
+        }
+        /* package */ void initLiveStack(String label) {
+            label = wrapLiveLabelText(label);
+            livePool.put(label, new StackReference(label));
+        }
+
+        private String wrapLiveLabelText(String label) {
+            if(!LiveReference.LIVE_REFERENCE_PATTERN.matcher(label).matches())
+                return String.format("<%s>", label);
+            return label;
         }
 
         public List<CardReference> loadLands(int playerIndex, Map<String, Integer> landCounts) {
@@ -152,7 +217,7 @@ abstract class GameLogicTestReference {
             }
         }
 
-        /* package */ Collection<CardReference> getAllReferences() {
+        /* package */ Collection<CardReference> getConcreteCardReferences() {
             return pool.values();
         }
 

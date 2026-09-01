@@ -9,8 +9,9 @@ import forge.item.PaperCard;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
-public class CardReference extends GameLogicTestReference {
+/* package */ class CardReference extends TestReference<Card> implements ICardReference {
     static final Pattern IMPLICIT_REF_PATTERN = Pattern.compile("^\\s*(?:\\[(?<modifier>[^]]+)]\\s*)?(?<name>[^\\[\\]]+)$");
     static final Pattern MODIFIER_PATTERN = Pattern.compile("^\\s*(?:(?<owner>.+?)'s\\s*)?(?:#(?<index>\\d+)|(?<quantity>\\d+)x)?\\s*$");
     protected final String refString;
@@ -24,6 +25,10 @@ public class CardReference extends GameLogicTestReference {
     protected boolean explicitlyPlaced = false;
 
     private PaperCard card;
+
+    public static Set<CardReference> onlyConcreteRefs(Collection<? extends ICardReference> cardRefs) {
+        return cardRefs.stream().filter(CardReference.class::isInstance).map(CardReference.class::cast).collect(Collectors.toSet());
+    }
 
     protected static int ownerTextToIndex(String ownerText) {
         if (ownerText == null || ownerText.isBlank())
@@ -119,23 +124,31 @@ public class CardReference extends GameLogicTestReference {
         this.explicitlyPlaced = true;
     }
 
-    /* package */ boolean isExplicitlyPlaced() {
-        return this.explicitlyPlaced;
+    @Override
+    public boolean needsPlacementDuringSetup() {
+        return !this.explicitlyPlaced;
     }
 
     @Override
-        /* package */ boolean refersTo(IIdentifiable o) {
+    public boolean refersTo(IIdentifiable o) {
         return o.getId() >= this.id && o.getId() < this.id + this.quantity;
     }
 
     /**
      * Searches the game for the actual card objects that originated from this card reference.
      */
+    @Override
     public List<Card> findCards(Game game) {
-        List<Card> out = new ArrayList<>(this.quantity);
+        return List.copyOf(getResolved(game));
+    }
+
+    @Override
+    public Set<Card> getResolved(Game game) {
+        Set<Card> out = new LinkedHashSet<>(this.quantity);
         for(int i = this.id; i < this.id + this.quantity; i++) {
             Card card = game.findById(i);
             assert(card.getPaperCard().getName().equals(this.card.getName()));
+            assert(!out.contains(card));
             out.add(card);
         }
         return out;
