@@ -126,6 +126,57 @@ abstract class ActionItemChoice extends GameLogicTestActionQueue.ActionItem {
         }
     }
 
+    abstract static class Order<T extends IIdentifiable> extends ActionItemChoice {
+        protected final List<? extends ITestReference<T>> order;
+        protected final boolean reversed;
+
+        Order(GameLogicTestActionQueue queue, List<? extends ITestReference<T>> order, boolean reversed) {
+            super(queue);
+            this.order = order;
+            this.reversed = reversed;
+        }
+
+        @Override
+        Set<ICardReference> getCardRefs() {
+            return order.stream().filter(ICardReference.class::isInstance).map(ICardReference.class::cast).collect(Collectors.toSet());
+        }
+
+        /* package */ List<T> applyTo(Collection<T> options) {
+            Set<T> unused = new HashSet<>(options);
+            List<T> out = new ArrayList<>(order.stream().mapToInt(ITestReference::getQuantity).sum());
+            for(ITestReference<T> ref : this.order) {
+                Set<T> matchingOptions = unused.stream().filter(ref::refersTo).limit(ref.getQuantity()).collect(Collectors.toSet());
+                unused.removeAll(matchingOptions);
+                if(matchingOptions.isEmpty())
+                    throw new GameLogicTestException("Choosing Order - Missing item %s; Options: %s", ref, options);
+                if(matchingOptions.size() < ref.getQuantity())
+                    throw new GameLogicTestException("Choosing Order - Missing copies of %s; Expected %d, found %s; Options: %s", ref, ref.getQuantity(), matchingOptions.size(), options);
+                out.addAll(matchingOptions);
+            }
+            if(!unused.isEmpty()) {
+                throw new GameLogicTestException("Choosing Order - Unused options found: %s", unused);
+//                this.queue.log("Choosing Order - Unused options found: %s", unused);
+//                out.addAll(unused);
+            }
+            if(reversed)
+                Collections.reverse(out);
+            return out;
+        }
+
+
+    }
+
+    static class OrderStack extends Order<SpellAbility> {
+        OrderStack(GameLogicTestActionQueue queue, List<? extends ITestReference<SpellAbility>> order, boolean reversed) {
+            super(queue, order, reversed);
+        }
+
+        @Override
+        public String toString() {
+            return "OrderStack[" + order.stream().map(Object::toString).collect(Collectors.joining(", ")) + "]";
+        }
+    }
+
 
 
 

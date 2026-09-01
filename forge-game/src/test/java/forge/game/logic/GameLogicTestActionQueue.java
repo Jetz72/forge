@@ -492,6 +492,15 @@ public class GameLogicTestActionQueue {
             return item;
         }
 
+        default ActionQueueProxy orderStack(String... stackRefs) {
+            applyPlayerIndexOverride();
+            List<StackReference> refs = List.of(getStackRefs(stackRefs));
+            GameLogicTestActionQueue queue = getQueue();
+            ActionItem item = new ActionItemChoice.OrderStack(queue, refs, false);
+            queue.push(item);
+            return item;
+        }
+
         default ActionQueueProxy then() {
             getQueue().then();
             return this;

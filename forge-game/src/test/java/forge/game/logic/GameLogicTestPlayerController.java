@@ -81,8 +81,13 @@ public class GameLogicTestPlayerController extends PlayerController {
 
     @Override
     public List<SpellAbility> orderSimultaneousSa(List<SpellAbility> activePlayerSAs) {
-        //TODO: Check action queue.
-        return activePlayerSAs;
+        ActionItemChoice.OrderStack choice = queue.getPendingChoiceOfType(ActionItemChoice.OrderStack.class, playerIndex);
+        if(choice == null)
+            return activePlayerSAs;
+        queue.fulfillCriteria(choice);
+        List<SpellAbility> out = choice.applyTo(activePlayerSAs);
+        log("Ordering abilities: %s", out);
+        return out;
     }
 
     @Override
