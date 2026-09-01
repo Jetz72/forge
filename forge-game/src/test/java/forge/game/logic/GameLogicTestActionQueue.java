@@ -9,7 +9,6 @@ import forge.game.card.Card;
 import forge.game.cost.Cost;
 import forge.game.event.*;
 import forge.game.spellability.SpellAbility;
-import forge.game.spellability.SpellAbilityStackInstance;
 import forge.game.trigger.Trigger;
 import forge.game.zone.ZoneType;
 
@@ -28,11 +27,11 @@ public class GameLogicTestActionQueue {
 
     /* package */ ActionQueueState queueState = ActionQueueState.BUILDING;
 
-    final ArrayDeque<ActionItem> queue = new ArrayDeque<>();
-    final CardReference.ReferencePool referencePool;
+    /* package */ final ArrayDeque<ActionItem> queue = new ArrayDeque<>();
+    /* package */ final CardReference.ReferencePool referencePool;
 
     private int workingPlayerIndex = -1;
-    private CardReference targetingFor = null;
+    private ICardReference targetingFor = null;
 
     private ActionItemPriority activePriorityItem;
     /** All remaining criteria (non-priority) nodes between the active priority item and the next priority item. */
@@ -46,8 +45,6 @@ public class GameLogicTestActionQueue {
     public final List<String> logBuffer = new ArrayList<>();
     private final ListMultimap<Class<? extends GameEvent>, String> expectNearMiss = ArrayListMultimap.create();
     private final Set<ActionItemExpectation> partiallyResolvedEvents = new HashSet<>();
-
-    private final Map<String, Integer> stackLabelIDs = new TreeMap<>();
 
     /* package */ GameLogicTestActionQueue(CardReference.ReferencePool referencePool) {
         this.referencePool = referencePool;
@@ -80,26 +77,14 @@ public class GameLogicTestActionQueue {
         return queue.peekLast().getPlayerIndex();
     }
 
-    /* package */ void setTargetingFor(CardReference targetingFor) {
+    /* package */ void setTargetingFor(ICardReference targetingFor) {
         this.targetingFor = targetingFor;
     }
 
-    /* package */ CardReference getTargetingFor() {
+    /* package */ ICardReference getTargetingFor() {
         return targetingFor;
     }
 
-
-    //Labels - used for finding stack items in a game.
-
-    /* package */ void putStackLabel(String label, int id) {
-        assert(!this.stackLabelIDs.containsKey(label));
-        this.stackLabelIDs.put(label, id);
-    }
-
-    /* package */ SpellAbilityStackInstance getStackItemFromLabel(Game game, String label) {
-        int id = this.stackLabelIDs.get(label);
-        return game.getStack().stream().filter(i -> i.getSpellAbility().getId() == id).findFirst().orElseThrow(() -> new GameLogicTestException("Unable to find a spell or ability on the stack with label '%s'", label));
-    }
 
 
     //Stuff for actually running the queue.
@@ -217,6 +202,10 @@ public class GameLogicTestActionQueue {
 
     /* package */ void fulfillCriteria(ActionItem criteria) {
         assert(criteriaBlock.contains(criteria));
+        if(criteria instanceof ActionItemExpectation expectation)
+            this.log("Expectation resolved: %s", expectation.getDescription());
+//        else if(criteria instanceof ActionItemChoice choice)
+//            this.log("Choice applied: %s", choice);
         this.criteriaBlock.remove(criteria);
         this.advanceCriteriaBlock();
     }
@@ -241,7 +230,6 @@ public class GameLogicTestActionQueue {
             this.log("Event accepted: %s", ev);
             if(result == ActionItemExpectation.ConsumeResult.RESOLVED) {
                 partiallyResolvedEvents.remove(evItem);
-                this.log("Expectation resolved: %s", evItem.getDescription());
                 this.fulfillCriteria(evItem);
             }
             return;
@@ -373,7 +361,7 @@ public class GameLogicTestActionQueue {
             return this.playerIndex == 0 ? 1 : 0;
         }
 
-        abstract Set<CardReference> getCardRefs();
+        abstract Set<ICardReference> getCardRefs(); //TODO: This can probably be removed?
 
         PlayerReference getActivePlayerRef() {
             return getReferencePool().getPlayer(this.playerIndex);
@@ -389,7 +377,7 @@ public class GameLogicTestActionQueue {
         QueueInterrupt(GameLogicTestActionQueue queue) { super(queue); }
 
         @Override
-        Set<CardReference> getCardRefs() { return Set.of(); }
+        Set<ICardReference> getCardRefs() { return Set.of(); }
     }
 
     /* package */ interface HasImplicitSetup {
@@ -422,8 +410,12 @@ public class GameLogicTestActionQueue {
                 this.getQueue().setWorkingPlayerIndex(index);
         }
 
-        private CardReference getCardRef(String implicitReference) {
+        private ICardReference getCardRef(String implicitReference) {
             return getReferencePool().getCard(implicitReference);
+        }
+
+        private ICardReference[] getCardRefs(String... implicitReferences) {
+            return Arrays.stream(implicitReferences).map(this::getCardRef).toArray(ICardReference[]::new);
         }
 
         private PlayerReference getPlayerRef(String implicitReference) {
@@ -438,16 +430,20 @@ public class GameLogicTestActionQueue {
             return getReferencePool().getPlayer(getQueue().getWorkingPlayerIndex());
         }
 
-        private GameLogicTestReference getRef(String implicitReference) {
+        private StackReference getStackRef(String implicitReference) {
+            return getReferencePool().getStack(implicitReference);
+        }
+
+        private StackReference[] getStackRefs(String... implicitReferences) {
+            return Arrays.stream(implicitReferences).map(this::getStackRef).toArray(StackReference[]::new);
+        }
+
+        private ITestReference<?> getRef(String implicitReference) {
             return getReferencePool().get(implicitReference);
         }
 
-        private CardReference[] getCardRefs(String... implicitReferences) {
-            return Arrays.stream(implicitReferences).map(this::getCardRef).toArray(CardReference[]::new);
-        }
-
-        private GameLogicTestReference[] getRefs(String... implicitReferences) {
-            return Arrays.stream(implicitReferences).map(this::getRef).toArray(GameLogicTestReference[]::new);
+        private ITestReference<?>[] getRefs(String... implicitReferences) {
+            return Arrays.stream(implicitReferences).map(this::getRef).toArray(ITestReference[]::new);
         }
 
         default ActionQueueProxy cast(String cardRef) {
@@ -473,7 +469,7 @@ public class GameLogicTestActionQueue {
         private ActionQueueProxy priority(ActionItemPriority.ActionType actionType, String cardRef, int saIndex) {
             applyPlayerIndexOverride();
             GameLogicTestActionQueue queue = getQueue();
-            CardReference card = getCardRef(cardRef);
+            ICardReference card = getCardRef(cardRef);
             card.assertSingular();
             ActionItem item = new ActionItemPriority(queue, actionType, card, saIndex);
             queue.push(item);
@@ -503,12 +499,12 @@ public class GameLogicTestActionQueue {
 
         default ActionQueueProxy expectDamage(int amount, String... objectRefs) {
             GameLogicTestActionQueue queue = getQueue();
-            GameLogicTestReference[] refs = getRefs(objectRefs);
+            ITestReference<?>[] refs = getRefs(objectRefs);
             //Have to split the references up because there are two separate event types.
-            List<CardReference> cardRefs = new ArrayList<>(objectRefs.length);
+            List<ICardReference> cardRefs = new ArrayList<>(objectRefs.length);
             List<PlayerReference> playerRefs = new ArrayList<>(objectRefs.length);
-            for(GameLogicTestReference ref : refs) {
-                if(ref instanceof CardReference cardRef) {
+            for(ITestReference<?> ref : refs) {
+                if(ref instanceof ICardReference cardRef) {
                     cardRefs.add(cardRef);
                 }
                 else if(ref instanceof PlayerReference playerRef)
@@ -537,8 +533,8 @@ public class GameLogicTestActionQueue {
             applyPlayerIndexOverride();
             PlayerReference playerRef = getWorkingPlayerRef();
             GameLogicTestActionQueue queue = getQueue();
-            List<CardReference> refs = List.of(getCardRefs(cardRefs));
-            ActionItemExpectation item = new ActionItemExpectation.ExpectMultiOrdered<>(queue, refs, GameEventCardChangeZone.class,
+            List<ICardReference> refs = List.of(getCardRefs(cardRefs));
+            ActionItemExpectation item = new ActionItemExpectation.ExpectMultiOrdered<>(queue, refs, 1, GameEventCardChangeZone.class,
                     (ev, ref) -> ref.refersTo(ev.card()) && playerRef.refersTo(ev.to().player()),
                     (ev) -> ev.to().zoneType() == ZoneType.Hand && ev.from().zoneType() == ZoneType.Library,
                     "%s drew card", playerRef
@@ -552,7 +548,7 @@ public class GameLogicTestActionQueue {
         default ActionQueueProxy expectDeath(String... cardRefs) {
             applyPlayerIndexOverride();
             GameLogicTestActionQueue queue = getQueue();
-            List<CardReference> refs = List.of(getCardRefs(cardRefs));
+            List<ICardReference> refs = List.of(getCardRefs(cardRefs));
             ActionItemExpectation item = new ActionItemExpectation.ExpectMultiUnordered<>(queue, refs, GameEventCardChangeZone.class,
                     (ev, ref) -> ref.refersTo(ev.card()),
                     (ev) -> ev.to().zoneType() == ZoneType.Graveyard && ev.from().zoneType() == ZoneType.Battlefield,
@@ -563,42 +559,38 @@ public class GameLogicTestActionQueue {
             return item;
         }
 
-        default ActionQueueProxy expectTrigger(String sourceCardRef) {
-            return this.expectTrigger(sourceCardRef, null, null, null);
+        default ActionQueueProxy_Label expectTrigger(String sourceCardRef) {
+            return this.expectTrigger(sourceCardRef, null, null);
         }
 
-        default ActionQueueProxy expectTrigger(String sourceCardRef, int triggerIndex) {
-            return this.expectTrigger(sourceCardRef, triggerIndex, null, null);
+        default ActionQueueProxy_Label expectTrigger(String sourceCardRef, int triggerIndex) {
+            return this.expectTrigger(sourceCardRef, triggerIndex, null);
         }
 
-        default ActionQueueProxy expectTriggers(String sourceCardRef, int triggerCount) {
+        default ActionQueueProxy_Label expectTriggers(String sourceCardRef, int triggerCount) {
             return this.expectTriggers(new String[]{sourceCardRef}, null, null, triggerCount);
         }
         //Can add variants as needed, supporting quantity, ability indexes, multiple source cards, labels, and/or triggeringObjects.
 
-        private ActionQueueProxy expectTrigger(String sourceCardRef, Integer abilityIndex, Map<AbilityKey, Object> triggeringObjects, String triggerRef) {
+        private ActionQueueProxy_Label expectTrigger(String sourceCardRef, Integer abilityIndex, Map<AbilityKey, Object> triggeringObjects) {
             applyPlayerIndexOverride();
             PlayerReference playerRef = getWorkingPlayerRef();
             GameLogicTestActionQueue queue = getQueue();
-            CardReference cardRef = getCardRef(sourceCardRef);
-            //Can't infer zone here before paperCard is loaded. See ExpectTrigger.doImplicitSetup
-            cardRef.setInferredOwner(playerRef.playerIndex);
-            ActionItem item = new ActionItemExpectation.ExpectTrigger(queue, cardRef, abilityIndex, triggeringObjects, triggerRef);
+            ICardReference cardRef = getCardRef(sourceCardRef);
+            ActionItemExpectation.ExpectTrigger item = new ActionItemExpectation.ExpectTrigger(queue, cardRef, abilityIndex, triggeringObjects);
+            item.setInferredCardRefOwnerIndex(playerRef.playerIndex);
             queue.setTargetingFor(cardRef);
             queue.push(item);
             return item;
         }
 
-        private ActionQueueProxy expectTriggers(String[] sourceCardRef, Class<? extends Trigger> apiType, Map<AbilityKey, Object> triggeringObjects, int triggerCount) {
+        private ActionQueueProxy_Label expectTriggers(String[] sourceCardRef, Class<? extends Trigger> apiType, Map<AbilityKey, Object> triggeringObjects, int triggerCount) {
             applyPlayerIndexOverride();
             PlayerReference playerRef = getWorkingPlayerRef();
             GameLogicTestActionQueue queue = getQueue();
-            CardReference[] cardRefs = getCardRefs(sourceCardRef);
-            for (CardReference r : cardRefs) {
-                //Can't infer zone here before paperCard is loaded. See ExpectTrigger.doImplicitSetup
-                r.setInferredOwner(playerRef.playerIndex);
-            }
-            ActionItem item = new ActionItemExpectation.ExpectTrigger(queue, List.of(cardRefs), apiType, triggeringObjects, triggerCount);
+            ICardReference[] cardRefs = getCardRefs(sourceCardRef);
+            ActionItemExpectation.ExpectTrigger item = new ActionItemExpectation.ExpectTrigger(queue, List.of(cardRefs), apiType, triggeringObjects, triggerCount);
+            item.setInferredCardRefOwnerIndex(playerRef.playerIndex);
             queue.setTargetingFor(cardRefs.length == 1 ? cardRefs[0] : null);
             queue.push(item);
             return item;
@@ -640,5 +632,9 @@ public class GameLogicTestActionQueue {
 //            queue.push(item);
 //            return item;
 //        }
+    }
+
+    public interface ActionQueueProxy_Label extends ActionQueueProxy {
+        ActionQueueProxy label(String label);
     }
 }

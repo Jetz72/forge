@@ -5,6 +5,11 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 public class GameLogicTestException extends RuntimeException {
     public GameLogicTestException(String message) {
         super(message);
@@ -28,8 +33,12 @@ public class GameLogicTestException extends RuntimeException {
             } //Collections of game objects can be stringified normally.
             else if (o instanceof GameLogicTestActionQueue.ActionItem)
                 out[i] = String.format("(%s)", o);
-            else if (o instanceof GameLogicTestReference)
+            else if (o instanceof TestReference)
                 out[i] = String.format("<%s>", o);
+            else if (o instanceof List<?> list)
+                out[i] = "[" + Arrays.stream(processFormatParams(list.toArray())).map(Object::toString).collect(Collectors.joining(", ")) + "]";
+            else if (o instanceof Set<?> set)
+                out[i] = "[" + Arrays.stream(processFormatParams(set.toArray())).map(Object::toString).collect(Collectors.joining(", ")) + "]";
             else
                 out[i] = o;
         }

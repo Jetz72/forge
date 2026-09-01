@@ -20,9 +20,9 @@ public class GameLogicTestSetup extends GameState {
         public final int index;
         private int id;
         private final CardReference.ReferencePool referencePool;
-        protected final EnumMap<ZoneType, List<CardReference>> explicitCardLists = new EnumMap<>(ZoneType.class);
-        protected List<CardReference> explicitLands = null;
-        protected boolean padDeck = true; //Whether the bottom of this player's deck gets padded with 10 arbitrary cards.
+        /* package */ final EnumMap<ZoneType, List<CardReference>> explicitCardLists = new EnumMap<>(ZoneType.class);
+        /* package */ List<CardReference> explicitLands = null;
+        /* package */ boolean padDeck = true; //Whether the bottom of this player's deck gets padded with 10 arbitrary cards.
         /* package */ PlayerSetup(int index, CardReference.ReferencePool referencePool) {
             this.index = index;
             this.referencePool = referencePool;
@@ -39,7 +39,7 @@ public class GameLogicTestSetup extends GameState {
         }
 
         public PlayerSetup zone(ZoneType zone, String... cardReferences) {
-            List<CardReference> refs = Arrays.stream(cardReferences).map(referencePool::getCard).toList();
+            List<CardReference> refs = Arrays.stream(cardReferences).map(referencePool::getCard).map(ICardReference::ensureConcrete).toList();
             for(CardReference c : refs) {
                 c.setInferredOwner(this.index);
                 c.setInferredZone(zone);
@@ -55,7 +55,7 @@ public class GameLogicTestSetup extends GameState {
          * behavior, add the lands to the player's battlefield via the .battlefield method.
          */
         public PlayerSetup lands(String... landReferences) {
-            this.explicitLands = Arrays.stream(landReferences).map(referencePool::getCard).toList();
+            this.explicitLands = Arrays.stream(landReferences).map(referencePool::getCard).map(ICardReference::ensureConcrete).toList();
             for(CardReference c : explicitLands) {
                 c.setInferredOwner(this.index);
                 c.setInferredZone(ZoneType.Battlefield);
@@ -170,8 +170,7 @@ public class GameLogicTestSetup extends GameState {
 
                 lastPriority = priority;
 
-                if (priority.subject != null) {
-                    CardReference focusCardRef = priority.subject;
+                if (priority.subject instanceof CardReference focusCardRef) {
                     focusSpellAbility = priority.getSpellAbility();
 
                     focusCardRef.setInferredOwner(priority.getPlayerIndex());
@@ -229,8 +228,8 @@ public class GameLogicTestSetup extends GameState {
         //Assign cards to players.
         Map<Integer, Map<ZoneType, List<CardReference>>> cardsPerZonePerPlayer = new HashMap<>(4);
 
-        for(CardReference ref : this.referencePool.getAllReferences()) {
-            if(ref.isExplicitlyPlaced())
+        for(CardReference ref : this.referencePool.getConcreteCardReferences()) {
+            if(!ref.needsPlacementDuringSetup())
                 continue; //Cards are already defined in a zone or in playerLands.
             int ownerIndex = ref.ownerIndex;
             if(ownerIndex < 0)

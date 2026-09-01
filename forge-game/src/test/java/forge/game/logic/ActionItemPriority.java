@@ -10,9 +10,9 @@ import java.util.Set;
 /**
  * Represents an action to attempt next time this player has priority.
  */
-public class ActionItemPriority extends GameLogicTestActionQueue.ActionItem implements GameLogicTestActionQueue.HasFocusAdjustment {
+/* package */ class ActionItemPriority extends GameLogicTestActionQueue.ActionItem implements GameLogicTestActionQueue.HasFocusAdjustment {
     final ActionType type;
-    final CardReference subject;
+    final ICardReference subject;
     final int saIndex;
     final String saKeyword;
 
@@ -42,7 +42,7 @@ public class ActionItemPriority extends GameLogicTestActionQueue.ActionItem impl
         }
     }
 
-    private ActionItemPriority(GameLogicTestActionQueue queue, ActionType type, CardReference subject, int saIndex, String saKeyword) {
+    private ActionItemPriority(GameLogicTestActionQueue queue, ActionType type, ICardReference subject, int saIndex, String saKeyword) {
         super(queue);
         this.type = type;
         this.subject = subject;
@@ -51,11 +51,11 @@ public class ActionItemPriority extends GameLogicTestActionQueue.ActionItem impl
         subject.assertSingular();
     }
 
-    protected ActionItemPriority(GameLogicTestActionQueue queue, ActionType type, CardReference subject, int saIndex) {
+    protected ActionItemPriority(GameLogicTestActionQueue queue, ActionType type, ICardReference subject, int saIndex) {
         this(queue, type, subject, saIndex, null);
     }
 
-    protected ActionItemPriority(GameLogicTestActionQueue queue, ActionType type, CardReference subject, String saKeyword) {
+    protected ActionItemPriority(GameLogicTestActionQueue queue, ActionType type, ICardReference subject, String saKeyword) {
         this(queue, type, subject, -1, saKeyword);
     }
 
@@ -65,7 +65,7 @@ public class ActionItemPriority extends GameLogicTestActionQueue.ActionItem impl
     }
 
     @Override
-    Set<CardReference> getCardRefs() {
+    Set<ICardReference> getCardRefs() {
         if (subject == null)
             return Set.of();
         return Set.of(subject);
@@ -74,6 +74,8 @@ public class ActionItemPriority extends GameLogicTestActionQueue.ActionItem impl
     //TODO: Handle alt face casts.
     public SpellAbility getSpellAbility() {
         //TODO: Return a list that includes all sub-abilities?
+        if(!(this.subject instanceof CardReference cardRef))
+            return null; //Live reference (e.g. a token or conjured card)
         if (this.saKeyword != null) //TODO: Find by keyword.
             throw new UnsupportedOperationException("TODO: keyword-based ability lookup not yet implemented for " + saKeyword);
         if (saIndex < 0)
@@ -82,11 +84,11 @@ public class ActionItemPriority extends GameLogicTestActionQueue.ActionItem impl
             /* CardType type = paperCard.getRules().getType();
             if(!type.isInstant() && !type.isSorcery())
                 return null; //Just play the card.*/
-            return GameLogicTestUtils.getSpell(this.subject.getCard(), saIndex);
+            return GameLogicTestUtils.getSpell(cardRef.getCard(), saIndex);
         } else if (this.type.isAbility()) {
-            return GameLogicTestUtils.getActivatedAbility(this.subject.getCard(), saIndex);
+            return GameLogicTestUtils.getActivatedAbility(cardRef.getCard(), saIndex);
         } else if (this.type.isSpecialAction()) {
-                return GameLogicTestUtils.getSpecialAction(this.subject.getCard(), saIndex);
+                return GameLogicTestUtils.getSpecialAction(cardRef.getCard(), saIndex);
         } else {
             //Shouldn't even be able to call this with no associated card.
             assert (false);

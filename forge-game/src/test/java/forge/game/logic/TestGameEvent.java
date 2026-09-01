@@ -4,6 +4,7 @@ import forge.game.ability.AbilityKey;
 import forge.game.event.GameEvent;
 import forge.game.event.IGameEventVisitor;
 import forge.game.spellability.SpellAbility;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.Map;
 
@@ -24,6 +25,11 @@ import java.util.Map;
             this.trigger = triggerSA.getTrigger();
             this.triggeringObjects = trigger.getOverridingAbility().getTriggeringObjects();
             this.triggerIndex = trigger.getHostCard().getTriggers().indexOf(trigger);
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%s(%d): [%s]", trigger.getHostCard(), triggerIndex, StringUtils.abbreviate(spellAbility.toString(), 24));
         }
     }
 }

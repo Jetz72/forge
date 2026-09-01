@@ -5,31 +5,38 @@ import forge.game.ability.AbilityKey;
 import forge.game.event.GameEvent;
 import forge.game.spellability.SpellAbility;
 import forge.game.trigger.Trigger;
-import forge.game.trigger.TriggerChangesZone;
 import forge.game.zone.ZoneType;
 
 import java.util.*;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /**
  * Represents a check of the current game state or events occurring before the next Priority or Choice action.
  */
 abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem implements GameLogicTestActionQueue.HasImplicitSetup {
-    protected final Collection<CardReference> cardRefs;
+    protected final Set<ICardReference> cardRefs;
     protected final String description;
     protected ZoneType inferredCardRefZone = null;
     protected int inferredCardRefOwnerIndex = -1;
 
-    protected ActionItemExpectation(GameLogicTestActionQueue queue, Collection<? extends GameLogicTestReference> refs, String description, Object... descriptionFormatParams) {
+    private final Set<CardReference> staticCardRefs;
+
+    protected ActionItemExpectation(GameLogicTestActionQueue queue, Collection<? extends ITestReference<?>> refs, String description, Object... descriptionFormatParams) {
         super(queue);
-        this.cardRefs = refs.stream().filter(CardReference.class::isInstance).map(CardReference.class::cast).toList();
+        this.cardRefs = refs.stream().filter(ICardReference.class::isInstance).map(ICardReference.class::cast).collect(Collectors.toUnmodifiableSet());
+        this.staticCardRefs = cardRefs.stream().filter(CardReference.class::isInstance).map(CardReference.class::cast).collect(Collectors.toUnmodifiableSet());
         this.description = String.format(description, GameLogicTestException.processFormatParams(descriptionFormatParams));
     }
 
     @Override
-    public Set<CardReference> getCardRefs() {
-        return Set.copyOf(cardRefs);
+    public Set<ICardReference> getCardRefs() {
+        return this.cardRefs;
+    }
+
+    protected Set<CardReference> getStaticCardRefs() {
+        return this.staticCardRefs;
     }
 
     enum ConsumeResult {
@@ -57,7 +64,7 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
 
     @Override
     public void doImplicitSetup(ActionItemPriority lastPriority, SpellAbility focusSpellAbility) {
-        for(CardReference ref : getCardRefs()) {
+        for(CardReference ref : getStaticCardRefs()) {
             if(inferredCardRefZone != null)
                 ref.setInferredZone(inferredCardRefZone);
             if(inferredCardRefOwnerIndex != -1)
@@ -65,20 +72,22 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
         }
     }
 
-    protected static class EventConsumer<T extends GameEvent> {
+    protected static class EventConsumer<T extends GameEvent, U extends ITestReference<?>> {
         protected final Class<T> eventClass;
-        protected final Predicate<T> matcher;
+        protected final U reference;
+        protected final BiPredicate<T, U> matcher;
         protected final Predicate<T> typeMatcher;
         protected final String stepDescription;
-        protected int quantity;
+        protected final int numTimesExpected;
         protected int received;
 
-        EventConsumer(Class<T> eventClass, int quantity, Predicate<T> matcher, Predicate<T> typeMatcher, Object stepDescription) {
+        EventConsumer(Class<T> eventClass, U reference, BiPredicate<T, U> matcher, Predicate<T> typeMatcher, Object stepDescription, int numTimesExpected) {
             this.eventClass = eventClass;
-            this.quantity = quantity;
+            this.reference = reference;
             this.matcher = matcher;
             this.typeMatcher = typeMatcher;
             this.stepDescription = String.valueOf(GameLogicTestException.processFormatParams(stepDescription)[0]);
+            this.numTimesExpected = numTimesExpected;
         }
 
         /* package */ boolean matchesType(GameEvent ev) {
@@ -86,15 +95,27 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
         }
 
         /* package */ boolean matchesConditions(GameEvent ev) {
-            return matcher.test(eventClass.cast(ev));
+            return matcher.test(eventClass.cast(ev), reference);
+        }
+
+        /* package */ ConsumeResult tryConsume(GameEvent ev) {
+            if(!matchesType(ev))
+                return ConsumeResult.MISS;
+            if(!matchesConditions(ev))
+                return ConsumeResult.NEAR_MISS;
+            if(++this.received < reference.getQuantity() * this.numTimesExpected)
+                return ConsumeResult.CONSUMED;
+            return ConsumeResult.RESOLVED;
         }
 
         @Override
         public String toString() {
-            if(quantity == 1)
+            if(reference instanceof LiveReference<?> r && !r.isResolved())
+                return "[?] " + this.stepDescription;
+            else if(reference.getQuantity() == 1)
                 return (received >= 1 ? "[✓] " : "[ ]") + this.stepDescription;
             else
-                return String.format("(%d/%d) %s", received, quantity, stepDescription);
+                return String.format("(%d/%d) %s", received, reference.getQuantity(), stepDescription);
         }
     }
 
@@ -102,7 +123,7 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
         protected final Class<T> eventType;
         protected final Predicate<T> predicate;
 
-        public ExpectSingle(GameLogicTestActionQueue queue, Collection<? extends GameLogicTestReference> refs, Class<T> eventType, Predicate<T> predicate, String description, Object... descriptionFormatParams) {
+        public ExpectSingle(GameLogicTestActionQueue queue, Collection<? extends ITestReference<?>> refs, Class<T> eventType, Predicate<T> predicate, String description, Object... descriptionFormatParams) {
             super(queue, refs, description, descriptionFormatParams);
             this.eventType = eventType;
             this.predicate = predicate;
@@ -123,18 +144,22 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
         }
     }
 
-    private static abstract class ExpectMulti <T extends GameEvent, U extends GameLogicTestReference> extends ActionItemExpectation {
+    private static abstract class ExpectMulti <T extends GameEvent, U extends ITestReference<?>> extends ActionItemExpectation {
         protected final Class<T> eventType;
         protected final BiPredicate<T, U> predicate;
-        protected final List<EventConsumer<T>> allSteps;
+        protected final List<EventConsumer<T, U>> allSteps;
 
         public ExpectMulti(GameLogicTestActionQueue queue, Collection<U> refs, Class<T> eventType, BiPredicate<T, U> predicate, Predicate<T> typePredicate, String description, Object... descriptionFormatParams) {
+            this(queue, refs, 1, eventType, predicate, typePredicate, description, descriptionFormatParams);
+        }
+
+        public ExpectMulti(GameLogicTestActionQueue queue, Collection<U> refs, int numTimesExpected, Class<T> eventType, BiPredicate<T, U> predicate, Predicate<T> typePredicate, String description, Object... descriptionFormatParams) {
             super(queue, refs, description, descriptionFormatParams);
             this.eventType = eventType;
             this.predicate = predicate;
             this.allSteps = new ArrayList<>(refs.size());
             for(U ref : refs) {
-                allSteps.add(new EventConsumer<>(eventType, ref.getQuantity(), event -> predicate.test(event, ref), typePredicate, ref));
+                allSteps.add(new EventConsumer<>(eventType, ref, predicate, typePredicate, ref, numTimesExpected));
             }
         }
 
@@ -151,40 +176,39 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
                 sb.append(" - ").append(this.allSteps.get(0).toString());
                 return sb.toString();
             }
-            for(EventConsumer<T> c : this.allSteps)
+            for(EventConsumer<T, U> c : this.allSteps)
                 sb.append("\n - ").append(c.toString());
             return sb.toString();
         }
     }
 
-    static class ExpectMultiOrdered <T extends GameEvent, U extends GameLogicTestReference> extends ExpectMulti<T, U> {
-        protected final Deque<EventConsumer<T>> remainingSteps;
+    static class ExpectMultiOrdered <T extends GameEvent, U extends ITestReference<?>> extends ExpectMulti<T, U> {
+        protected final Deque<EventConsumer<T, U>> remainingSteps;
 
         public ExpectMultiOrdered(GameLogicTestActionQueue queue, Collection<U> refs, Class<T> eventType, BiPredicate<T, U> predicate, String description, Object... descriptionFormatParams) {
-            this(queue, refs, eventType, predicate, null, description, descriptionFormatParams);
+            this(queue, refs, 1, eventType, predicate, null, description, descriptionFormatParams);
         }
 
-        public ExpectMultiOrdered(GameLogicTestActionQueue queue, Collection<U> refs, Class<T> eventType, BiPredicate<T, U> predicate, Predicate<T> typePredicate, String description, Object... descriptionFormatParams) {
-            super(queue, refs, eventType, predicate, typePredicate, description, descriptionFormatParams);
+        public ExpectMultiOrdered(GameLogicTestActionQueue queue, Collection<U> refs, int numTimesExpected, Class<T> eventType, BiPredicate<T, U> predicate, Predicate<T> typePredicate, String description, Object... descriptionFormatParams) {
+            super(queue, refs, numTimesExpected, eventType, predicate, typePredicate, description, descriptionFormatParams);
             this.remainingSteps = new ArrayDeque<>(allSteps);
         }
 
         @Override
         ConsumeResult receiveEvent(GameEvent event) {
-            EventConsumer<T> head = remainingSteps.peek();
+            EventConsumer<T, U> head = remainingSteps.peek();
             assert(head != null);
-            if(!head.matchesType(event))
-                return ConsumeResult.MISS;
-            else if(!head.matchesConditions(event))
-                return ConsumeResult.NEAR_MISS;
-            if(++head.received >= head.quantity)
+            ConsumeResult result = head.tryConsume(event);
+            if(result == ConsumeResult.RESOLVED) {
                 remainingSteps.poll();
-            return remainingSteps.isEmpty() ? ConsumeResult.RESOLVED : ConsumeResult.CONSUMED;
+                return remainingSteps.isEmpty() ? ConsumeResult.RESOLVED : ConsumeResult.CONSUMED;
+            }
+            return result;
         }
     }
 
-    static class ExpectMultiUnordered <T extends GameEvent, U extends GameLogicTestReference> extends ExpectMulti<T, U> {
-        protected final List<EventConsumer<T>> remainingSteps;
+    static class ExpectMultiUnordered <T extends GameEvent, U extends ITestReference<?>> extends ExpectMulti<T, U> {
+        protected final List<EventConsumer<T, U>> remainingSteps;
 
         public ExpectMultiUnordered(GameLogicTestActionQueue queue, Collection<U> refs, Class<T> eventType, BiPredicate<T, U> predicate, String description, Object... descriptionFormatParams) {
             this(queue, refs, eventType, predicate, null, description, descriptionFormatParams);
@@ -199,44 +223,45 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
         ConsumeResult receiveEvent(GameEvent event) {
             assert(!remainingSteps.isEmpty());
             boolean foundType = false;
-            for(EventConsumer<T> head : remainingSteps) {
-                if (!head.matchesType(event))
-                    continue;
-                else if (!head.matchesConditions(event)) {
+            for(EventConsumer<T, U> head : remainingSteps) {
+                ConsumeResult result = head.tryConsume(event);
+                if(result == ConsumeResult.NEAR_MISS)
                     foundType = true;
-                    continue;
-                }
-                if (++head.received >= head.quantity)
+                else if(result == ConsumeResult.CONSUMED)
+                    return ConsumeResult.CONSUMED;
+                else if(result == ConsumeResult.RESOLVED) {
                     remainingSteps.remove(head);
-                return remainingSteps.isEmpty() ? ConsumeResult.RESOLVED : ConsumeResult.CONSUMED;
+                    return remainingSteps.isEmpty() ? ConsumeResult.RESOLVED : ConsumeResult.CONSUMED;
+                }
             }
             return foundType ? ConsumeResult.NEAR_MISS : ConsumeResult.MISS;
         }
     }
 
-    static class ExpectTrigger extends ExpectMultiOrdered<TestGameEvent.Trigger, CardReference> implements GameLogicTestActionQueue.HasFocusAdjustment, GameLogicTestActionQueue.HasImplicitSetup {
-        protected final String triggerRef;
+    static class ExpectTrigger extends ExpectMultiOrdered<TestGameEvent.Trigger, ICardReference>
+            implements GameLogicTestActionQueue.HasFocusAdjustment, GameLogicTestActionQueue.HasImplicitSetup,
+            GameLogicTestActionQueue.ActionQueueProxy_Label
+    {
         protected final Integer triggerIndex;
         protected final Class<? extends Trigger> apiType;
 
-        public ExpectTrigger(GameLogicTestActionQueue queue, Collection<CardReference> cardRefs, Class<? extends Trigger> apiType, Map<AbilityKey, Object> triggeringObjects, int triggerCount) {
-            super(queue, cardRefs, TestGameEvent.Trigger.class, getPredicate(triggeringObjects, apiType, null), "Expect trigger from %s", cardRefs);
-            this.allSteps.forEach(step -> step.quantity *= triggerCount);
-            this.triggerRef = null;
+        protected Set<SpellAbility> receivedLiveTriggers = null;
+        protected String triggerRef = null;
+
+        public ExpectTrigger(GameLogicTestActionQueue queue, Collection<ICardReference> cardRefs, Class<? extends Trigger> apiType, Map<AbilityKey, Object> triggeringObjects, int triggerCount) {
+            super(queue, cardRefs, triggerCount, TestGameEvent.Trigger.class, getPredicate(triggeringObjects, apiType, null), null, "Expect trigger from %s", cardRefs);
             this.triggerIndex = null;
             this.apiType = apiType;
         }
 
-        public ExpectTrigger(GameLogicTestActionQueue queue, CardReference cardRef, Integer triggerIndex, Map<AbilityKey, Object> triggeringObjects, String triggerRef) {
+        public ExpectTrigger(GameLogicTestActionQueue queue, ICardReference cardRef, Integer triggerIndex, Map<AbilityKey, Object> triggeringObjects) {
             super(queue, Set.of(cardRef), TestGameEvent.Trigger.class, getPredicate(triggeringObjects, null, triggerIndex), "Expect trigger from %s", cardRef);
-            assert(cardRef.quantity == 1 || triggerRef == null); //Can't assign a label to multiple triggers.
-            this.triggerRef = triggerRef;
             this.triggerIndex = triggerIndex;
             this.apiType = null;
         }
 
-        static BiPredicate<TestGameEvent.Trigger, CardReference> getPredicate(Map<AbilityKey, Object> triggeringObjects, Class<? extends Trigger> apiType, Integer triggerIndex) {
-            BiPredicate<TestGameEvent.Trigger, CardReference> out = (triggerEvent, ref) -> ref.refersTo(triggerEvent.trigger.getHostCard());
+        static BiPredicate<TestGameEvent.Trigger, ICardReference> getPredicate(Map<AbilityKey, Object> triggeringObjects, Class<? extends Trigger> apiType, Integer triggerIndex) {
+            BiPredicate<TestGameEvent.Trigger, ICardReference> out = (triggerEvent, ref) -> ref.refersTo(triggerEvent.trigger.getHostCard());
             if(triggerIndex != null)
                 out = out.and((triggerEvent, ref) -> triggerEvent.triggerIndex == triggerIndex);
             if(apiType != null)
@@ -246,7 +271,7 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
                     for(Map.Entry<AbilityKey, Object> e : triggeringObjects.entrySet()) {
                     if(triggerEvent.triggeringObjects.containsKey(e.getKey())) {
                         Object value = triggerEvent.triggeringObjects.get(e.getKey());
-                        if(e.getValue() instanceof GameLogicTestReference r && value instanceof IIdentifiable i && r.refersTo(i))
+                        if(e.getValue() instanceof ITestReference<?> r && value instanceof IIdentifiable i && r.refersTo(i))
                             continue;
                         if(!Objects.equals(value, e.getValue()))
                             return false;
@@ -260,8 +285,10 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
         @Override
         ConsumeResult receiveEvent(GameEvent event) {
             ConsumeResult out = super.receiveEvent(event);
-            if(this.triggerRef != null && out == ConsumeResult.RESOLVED) {
-                queue.putStackLabel(this.triggerRef, ((TestGameEvent.Trigger) event).spellAbility.getId());
+            if (this.triggerRef != null && (out == ConsumeResult.RESOLVED || out == ConsumeResult.CONSUMED)) {
+                this.receivedLiveTriggers.add(((TestGameEvent.Trigger) event).spellAbility);
+                if (out == ConsumeResult.RESOLVED)
+                    queue.referencePool.putLiveStack(this.triggerRef, receivedLiveTriggers);
             }
             return out;
         }
@@ -269,7 +296,7 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
         @Override
         public void doImplicitSetup(ActionItemPriority lastPriority, SpellAbility focusSpellAbility) {
             super.doImplicitSetup(lastPriority, focusSpellAbility);
-            for(CardReference cardRef : this.cardRefs) {
+            for(CardReference cardRef : this.getStaticCardRefs()) {
                 Trigger trigger;
                 if(this.triggerIndex != null)
                     trigger = GameLogicTestUtils.getTrigger(cardRef.getCard(), triggerIndex);
@@ -291,17 +318,28 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
         @Override
         public SpellAbility getSpellAbility() {
             Trigger t;
-            if(cardRefs.size() > 1)
+            if(cardRefs.size() > 1 || getStaticCardRefs().isEmpty())
                 return null;
             if(this.apiType != null)
-                t = GameLogicTestUtils.getTrigger(cardRefs.iterator().next().getCard(), apiType);
+                t = GameLogicTestUtils.getTrigger(getStaticCardRefs().iterator().next().getCard(), apiType);
             else if(this.triggerIndex != null)
-                t = GameLogicTestUtils.getTrigger(cardRefs.iterator().next().getCard(), triggerIndex);
+                t = GameLogicTestUtils.getTrigger(getStaticCardRefs().iterator().next().getCard(), triggerIndex);
             else
                 return null;
             if(t == null)
                 return null;
             return t.getOverridingAbility();
+        }
+
+        @Override
+        public GameLogicTestActionQueue.ActionQueueProxy label(String label) {
+            assert(this.triggerRef == null);
+            if(this.allSteps.size() > 1)
+                throw new UnsupportedOperationException("Cannot apply a label when listening for multiple triggers!");
+            this.receivedLiveTriggers = new HashSet<>();
+            this.triggerRef = label;
+            queue.referencePool.initLiveStack(label);
+            return this;
         }
     }
 
