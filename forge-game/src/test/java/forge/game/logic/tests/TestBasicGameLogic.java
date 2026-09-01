@@ -40,26 +40,36 @@ public class TestBasicGameLogic extends GameLogicTest {
 
     @Test
     void testTriggers() {
-        user.setup.battlefield("Gristle Grinner", "Omnath, Locus of Rage", "Bogardan Firefiend");
-        opponent.setup.battlefield("[#1] Plague Spitter", "[#2] Plague Spitter");
+        user.setup.battlefield("Omnath, Locus of Rage", "Bogardan Firefiend");
+        opponent.setup.battlefield("Gristle Grinner", "[#1] Plague Spitter", "[#2] Plague Spitter");
         user.playLand("Mountain").expectTrigger("Omnath, Locus of Rage", 0);
         user.cast("Lightning Bolt").target("[#1] Plague Spitter");
         user.respond("Lava Dart").target("[#2] Plague Spitter").expectDamage(1, "[#2] Plague Spitter");
         expectDeath("[#1] Plague Spitter");
+
         then(); //Triggers from 1st Plague Spitter's death go on stack.
-        expectTrigger("Gristle Grinner").expectTrigger("[#1] Plague Spitter");
+        expectTrigger("Gristle Grinner").label("<Gristle Grows>");
+        expectTrigger("[#1] Plague Spitter").label("<Plague Spit>");
+        //Grow before plague spitter explodes, otherwise all the subsequent damage and death will happen before it ever grows.
+        opponent.orderStack("<Gristle Grows>", "<Plague Spit>");
+
         then(); //Resolve stack.
-        expectDamage(1, "Player 1", "Player 2", "Bogardan Firefiend", "Gristle Grinner", "Omnath, Locus of Rage", "[#2] Plague Spitter"); //TODO: More live-reference stuff. Support tokens, stack instances, and extrinsic abilities.
+        expectDamage(1, "Player 1", "Player 2", "Bogardan Firefiend", "Gristle Grinner", "Omnath, Locus of Rage", "[#2] Plague Spitter");
         expectDeath("[#2] Plague Spitter", "Bogardan Firefiend");
-        then(); //Death triggers from those two go on the stack. TODO: Ordering.
+        assertPT(5, 5, "Gristle Grinner");
+
+        then(); //Death triggers caused by those two go on the stack. Choose the targets for the targeted ones.
         expectTrigger("[#2] Plague Spitter");
-        user.expectTrigger("Bogardan Firefiend").target("Omnath, Locus of Rage");
-        user.expectTrigger("Omnath, Locus of Rage", 1).target("Player 2");
+        user.expectTrigger("Bogardan Firefiend").target("Gristle Grinner");
+        user.expectTrigger("Omnath, Locus of Rage", 1).target("Gristle Grinner");
         expectTriggers("Gristle Grinner", 2);
+
         then(); //Resolve all those.
         expectDamage(1, "Player 1", "Player 2", "Omnath, Locus of Rage", "Gristle Grinner"); //Plague Spitter
-        expectDamage(2, "Omnath, Locus of Rage"); //Firefiend
-        expectDamage(3, "Player 2"); //Omnath
+        expectDamage(2, "Gristle Grinner"); //Firefiend
+        expectDamage(3, "Gristle Grinner"); //Omnath
+
+        then(); //Since the non-active player's trigger resolves first, Gristle Grinner will grow before the damage can kill it.
         assertPT(9, 9, "Gristle Grinner");
     }
 }
