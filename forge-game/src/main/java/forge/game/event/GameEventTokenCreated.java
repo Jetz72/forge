@@ -1,6 +1,17 @@
 package forge.game.event;
 
-public record GameEventTokenCreated() implements GameEvent {
+import forge.game.card.Card;
+import forge.game.card.CardView;
+import forge.util.collect.FCollection;
+
+import java.util.Collection;
+import java.util.stream.Collectors;
+
+public record GameEventTokenCreated(FCollection<CardView> tokens) implements GameEvent {
+
+    public GameEventTokenCreated(Collection<Card> tokens) {
+        this(CardView.getCollection(tokens));
+    }
 
     @Override
     public <T> T visit(IGameEventVisitor<T> visitor) {
@@ -12,6 +23,6 @@ public record GameEventTokenCreated() implements GameEvent {
      */
     @Override
     public String toString() {
-        return "Token created";
+        return "Token created - " + tokens.stream().map(CardView::getOracleName).collect(Collectors.toSet());
     }
 }

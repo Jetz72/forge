@@ -6,31 +6,29 @@ import forge.game.IIdentifiable;
 import java.util.Collection;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 abstract class LiveReference <T extends IIdentifiable> implements ITestReference<T> {
     static final Pattern LIVE_REFERENCE_PATTERN = Pattern.compile("^\\s*<(?<label>[^<>]+)>\\s*$");
     public final String label;
     protected int id = -1;
 
-    protected Set<T> resolved;
+    protected Set<Integer> resolved;
     private String requireSingularError = null;
 
     LiveReference(String label) {
         this.label = label;
     }
 
-    /* package */ void setResolved(Collection<T> resolved) {
+    /* package */ void setResolved(Collection<? extends IIdentifiable> resolved) {
         assert(this.resolved == null);
         if(this.requireSingularError != null && resolved.size() > 1)
             throw new UnsupportedOperationException(this.requireSingularError);
-        this.resolved = Set.copyOf(resolved);
+        this.resolved = resolved.stream().map(IIdentifiable::getId).collect(Collectors.toSet());
     }
 
     @Override
-    public Set<T> getResolved(Game game) {
-        assert(this.resolved != null);
-        return this.resolved;
-    }
+    public abstract Set<T> getResolved(Game game);
 
     /* package */ boolean isResolved() {
         return resolved != null;

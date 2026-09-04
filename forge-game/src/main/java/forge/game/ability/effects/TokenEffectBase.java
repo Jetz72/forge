@@ -66,12 +66,12 @@ public abstract class TokenEffectBase extends SpellAbilityEffect {
         return tokenTable;
     }
 
-    protected TokenCreateTable makeTokenTable(Iterable<Player> players, String[] tokenScripts, final int finalAmount, final boolean clone,
+    protected List<Card> makeTokenTable(Iterable<Player> players, String[] tokenScripts, final int finalAmount, final boolean clone,
             CardZoneTable triggerList, MutableBoolean combatChanged, final SpellAbility sa) {
         return makeTokenTable(createTokenTable(players, tokenScripts, finalAmount, sa), clone, triggerList, combatChanged, sa);
     }
 
-    protected TokenCreateTable makeTokenTable(TokenCreateTable tokenTable, final boolean clone, CardZoneTable triggerList, MutableBoolean combatChanged, final SpellAbility sa) {
+    protected List<Card> makeTokenTable(TokenCreateTable tokenTable, final boolean clone, CardZoneTable triggerList, MutableBoolean combatChanged, final SpellAbility sa) {
         final Card host = sa.getHostCard();
         final Game game = host.getGame();
         long timestamp = game.getNextTimestamp();
@@ -222,7 +222,7 @@ public abstract class TokenEffectBase extends SpellAbilityEffect {
         if (sa.hasParam("AtEOT")) {
             registerDelayedTrigger(sa, sa.getParam("AtEOT"), allTokens);
         }
-        return tokenTable;
+        return allTokens;
     }
 
     private boolean attachTokenTo(Card tok, SpellAbility sa) {

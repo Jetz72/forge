@@ -1,9 +1,9 @@
 package forge.game.logic;
 
 import forge.game.Game;
-import forge.game.GameEntity;
 import forge.game.IIdentifiable;
 import forge.game.card.Card;
+import forge.game.card.CardView;
 
 import java.util.Collection;
 import java.util.List;
@@ -12,21 +12,17 @@ import java.util.stream.Collectors;
 
 public class LiveCardReference extends LiveReference<Card> implements ICardReference {
 
-    protected Set<Integer> ids;
-
     LiveCardReference(String label) {
         super(label);
     }
 
-    @Override
-    void setResolved(Collection<Card> resolved) {
+    void setResolved(Collection<? extends IIdentifiable> resolved) {
         super.setResolved(resolved);
-        this.ids = resolved.stream().map(GameEntity::getId).collect(Collectors.toSet());
     }
 
     @Override
     public Set<Card> getResolved(Game game) {
-        return ids.stream().map(game::findById).collect(Collectors.toSet());
+        return this.resolved.stream().map(game::findById).collect(Collectors.toSet());
     }
 
     @Override

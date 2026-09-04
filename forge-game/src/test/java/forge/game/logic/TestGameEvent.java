@@ -1,6 +1,7 @@
 package forge.game.logic;
 
 import forge.game.ability.AbilityKey;
+import forge.game.card.CardView;
 import forge.game.event.GameEvent;
 import forge.game.event.IGameEventVisitor;
 import forge.game.spellability.SpellAbility;
@@ -31,5 +32,10 @@ import java.util.Map;
         public String toString() {
             return String.format("%s(%d): [%s]", trigger.getHostCard(), triggerIndex, StringUtils.abbreviate(spellAbility.toString(), 24));
         }
+    }
+
+    static class TokenCreated extends TestGameEvent {
+        final CardView card;
+
     }
 }

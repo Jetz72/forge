@@ -127,7 +127,7 @@ public class TokenEffect extends TokenEffectBase {
             return;
         }
 
-        makeTokenTable(getDefinedPlayersOrTargeted(sa, "TokenOwner"), sa.getParam("TokenScript").split(","),
+        List<Card> allTokens = makeTokenTable(getDefinedPlayersOrTargeted(sa, "TokenOwner"), sa.getParam("TokenScript").split(","),
                 amount, false, triggerList, combatChanged, sa);
 
         if (!useZoneTable) {
@@ -135,7 +135,7 @@ public class TokenEffect extends TokenEffectBase {
             triggerList.clear();
         }
 
-        game.fireEvent(new GameEventTokenCreated());
+        game.fireEvent(new GameEventTokenCreated(allTokens));
 
         if (combatChanged.isTrue()) {
             game.updateCombatForView();

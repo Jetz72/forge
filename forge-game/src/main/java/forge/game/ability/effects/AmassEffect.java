@@ -1,5 +1,6 @@
 package forge.game.ability.effects;
 
+import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang3.mutable.MutableBoolean;
@@ -72,11 +73,11 @@ public class AmassEffect extends TokenEffectBase {
             result.setName(type + " Army Token");
             result.setTokenSpawningAbility(sa);
 
-            makeTokenTable(makeTokenTableInternal(amasser, result, 1), false, triggerList, combatChanged, sa);
+            List<Card> token = makeTokenTable(makeTokenTableInternal(amasser, result, 1), false, triggerList, combatChanged, sa);
 
             triggerList.triggerChangesZoneAll(game, sa);
 
-            game.fireEvent(new GameEventTokenCreated());
+            game.fireEvent(new GameEventTokenCreated(token));
 
             if (combatChanged.isTrue()) {
                 game.updateCombatForView();
