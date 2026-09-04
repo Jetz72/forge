@@ -12,6 +12,8 @@ import forge.util.Lang;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.mutable.MutableBoolean;
 
+import java.util.List;
+
 public class IncubateEffect extends TokenEffectBase {
 
     @Override
@@ -52,12 +54,12 @@ public class IncubateEffect extends TokenEffectBase {
                 CardZoneTable triggerList = new CardZoneTable();
                 MutableBoolean combatChanged = new MutableBoolean(false);
 
-                makeTokenTable(makeTokenTableInternal(p, "incubator_c_0_0_a_phyrexian", 1, sa), false,
+                List<Card> token = makeTokenTable(makeTokenTableInternal(p, "incubator_c_0_0_a_phyrexian", 1, sa), false,
                         triggerList, combatChanged, sa);
 
                 triggerList.triggerChangesZoneAll(game, sa);
 
-                game.fireEvent(new GameEventTokenCreated());
+                game.fireEvent(new GameEventTokenCreated(token));
 
                 if (combatChanged.isTrue()) {
                     game.updateCombatForView();

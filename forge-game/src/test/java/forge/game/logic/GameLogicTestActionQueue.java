@@ -605,6 +605,10 @@ public class GameLogicTestActionQueue {
             return item;
         }
 
+        private ActionQueueProxy_Label expectToken(String tokenScript) {
+            applyPlayerIndexOverride();
+        }
+
         default ActionQueueProxy assertZone(ZoneType zone, String... cardRefs) {
             GameLogicTestActionQueue queue = getQueue();
             ActionItem item = new ActionItemAssertion(queue, getCardRefs(cardRefs)) {

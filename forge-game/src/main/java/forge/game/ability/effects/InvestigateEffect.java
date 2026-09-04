@@ -13,6 +13,8 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.util.Lang;
 
+import java.util.List;
+
 public class InvestigateEffect extends TokenEffectBase {
 
     @Override
@@ -50,7 +52,7 @@ public class InvestigateEffect extends TokenEffectBase {
                     continue;
                 }
 
-                makeTokenTable(makeTokenTableInternal(p, "c_a_clue_draw", 1, sa), false, triggerList, combatChanged, sa);
+                List<Card> token = makeTokenTable(makeTokenTableInternal(p, "c_a_clue_draw", 1, sa), false, triggerList, combatChanged, sa);
 
                 p.addInvestigatedThisTurn();
 
@@ -58,7 +60,7 @@ public class InvestigateEffect extends TokenEffectBase {
                     card.addRemembered(p);
                 }
 
-                game.fireEvent(new GameEventTokenCreated());
+                game.fireEvent(new GameEventTokenCreated(token));
             }
 
             triggerList.triggerChangesZoneAll(game, sa);

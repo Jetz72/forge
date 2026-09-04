@@ -91,11 +91,11 @@ public class EndureEffect extends TokenEffectBase {
         if (!tokenTable.isEmpty()) {
             CardZoneTable triggerList = new CardZoneTable();
             MutableBoolean combatChanged = new MutableBoolean(false);
-            makeTokenTable(tokenTable, false, triggerList, combatChanged, sa);
+            List<Card> token = makeTokenTable(tokenTable, false, triggerList, combatChanged, sa);
 
             triggerList.triggerChangesZoneAll(game, sa);
 
-            game.fireEvent(new GameEventTokenCreated());
+            game.fireEvent(new GameEventTokenCreated(token));
 
             if (combatChanged.isTrue()) {
                 game.updateCombatForView();
