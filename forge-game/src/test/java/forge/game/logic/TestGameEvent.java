@@ -33,9 +33,4 @@ import java.util.Map;
             return String.format("%s(%d): [%s]", trigger.getHostCard(), triggerIndex, StringUtils.abbreviate(spellAbility.toString(), 24));
         }
     }
-
-    static class TokenCreated extends TestGameEvent {
-        final CardView card;
-
-    }
 }

@@ -19,8 +19,11 @@ public class StackReference extends LiveReference<SpellAbility> {
 
     @Override
     void setResolved(Collection<? extends IIdentifiable> resolved) {
+        for (IIdentifiable i : resolved) {
+            if (!(i instanceof SpellAbility))
+                throw new GameLogicTestException("%s - expected to resolve to type 'SpellAbility'; got '%s'", this, i.getClass());
+        }
         super.setResolved(resolved);
-        assert(resolved.stream().allMatch(SpellAbility.class::isInstance));
         this.resolvedSAs = resolved.stream().map(SpellAbility.class::cast).collect(Collectors.toSet());
     }
 

@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 abstract class LiveReference <T extends IIdentifiable> implements ITestReference<T> {
     static final Pattern LIVE_REFERENCE_PATTERN = Pattern.compile("^\\s*<(?<label>[^<>]+)>\\s*$");
     public final String label;
-    protected int id = -1;
+    //protected int id = -1;
 
     protected Set<Integer> resolved;
     private String requireSingularError = null;
@@ -41,6 +41,10 @@ abstract class LiveReference <T extends IIdentifiable> implements ITestReference
             return -1;
         }
         return this.resolved.size();
+    }
+
+    /* package */ boolean matchesResolved(Collection<? extends IIdentifiable> input) {
+        return input.stream().map(IIdentifiable::getId).collect(Collectors.toSet()).equals(this.resolved);
     }
 
     @Override

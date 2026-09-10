@@ -1,8 +1,12 @@
 package forge.game.logic;
 
+import com.google.common.collect.Multimap;
+import com.google.common.collect.MultimapBuilder;
 import forge.game.IIdentifiable;
 import forge.game.ability.AbilityKey;
+import forge.game.card.CardView;
 import forge.game.event.GameEvent;
+import forge.game.event.GameEventCardChangeZone;
 import forge.game.spellability.SpellAbility;
 import forge.game.trigger.Trigger;
 import forge.game.zone.ZoneType;
@@ -340,6 +344,82 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
             this.triggerRef = label;
             queue.referencePool.initLiveStack(label);
             return this;
+        }
+    }
+
+/*    static class CardResolvingConsumer {
+        final String cardName;
+        final int expectedAmount;
+        final Set<CardView> collected = new HashSet<>();
+
+        CardResolvingConsumer(String cardName, int expectedAmount) {
+            this.cardName = cardName;
+            this.expectedAmount = expectedAmount;
+        }
+    }*/
+
+    static class ExpectToken extends ActionItemExpectation implements GameLogicTestActionQueue.ActionQueueProxy_Label {
+        final PlayerReference player;
+        final Map<String, Integer> tokenNamesAndAmounts;
+        final Multimap<String, CardView> collectedTokens;
+        final Set<String> neededNames;
+        String tokenRef = null;
+//        final Set<CardResolvingConsumer> unresolvedConsumers;
+//        final List<CardResolvingConsumer> allConsumers;
+
+        ExpectToken(GameLogicTestActionQueue queue, PlayerReference player, Map<String, Integer> tokenNamesAndAmounts) {
+            super(queue, Set.of(), "Expect tokens (%s): %s", player, formatNamesAndAmounts(tokenNamesAndAmounts));
+            assert(tokenNamesAndAmounts.values().stream().noneMatch(i -> i == null || i <= 0));
+            this.player = player;
+            this.tokenNamesAndAmounts = tokenNamesAndAmounts;
+            this.collectedTokens = MultimapBuilder.treeKeys().hashSetValues().build();
+            this.neededNames = new HashSet<>(tokenNamesAndAmounts.keySet());
+        }
+
+        @Override
+        ConsumeResult receiveEvent(GameEvent event) {
+            if(!(event instanceof GameEventCardChangeZone ev))
+                return ConsumeResult.MISS;
+            if((ev.from() != null && ev.from().zoneType() != ZoneType.None) || !ev.card().isToken())
+                return ConsumeResult.MISS;
+            String name = ev.card().getOracleName();
+            if(!this.neededNames.contains(name))
+                return ConsumeResult.NEAR_MISS;
+            if(this.player != null) {
+                if(!this.player.refersTo(ev.card().getOwner()))
+                    return ConsumeResult.NEAR_MISS;
+            }
+            this.collectedTokens.put(name, ev.card());
+            if(collectedTokens.get(name).size() == tokenNamesAndAmounts.get(name))
+                neededNames.remove(name); //TODO: Should probably have some way to identify when more events are received than expected.
+            if(neededNames.isEmpty()) {
+                if(tokenRef != null)
+                    queue.referencePool.putLiveCards(tokenRef, Set.copyOf(collectedTokens.values()));
+                return ConsumeResult.RESOLVED;
+            }
+            return ConsumeResult.CONSUMED;
+        }
+
+        @Override
+        Set<Class<? extends GameEvent>> getUnresolvedEventTypes() {
+            return Set.of(GameEventCardChangeZone.class);
+        }
+
+        @Override
+        public GameLogicTestActionQueue.ActionQueueProxy label(String label) {
+            assert(this.tokenRef == null);
+            this.tokenRef = label;
+            queue.referencePool.initLiveCards(label);
+            return this;
+        }
+
+        private static String formatNamesAndAmounts(Map<String, Integer> tokenNamesAndAmounts) {
+            if(tokenNamesAndAmounts.isEmpty())
+                return "[]";
+            String out = tokenNamesAndAmounts.entrySet().stream()
+                    .map(e -> String.format("%dx %s", e.getValue(), e.getKey()))
+                    .collect(Collectors.joining(", "));
+            return "[" + out + "]";
         }
     }
 

@@ -43,6 +43,9 @@ public class TestBasicGameLogic extends GameLogicTest {
         user.setup.battlefield("Omnath, Locus of Rage", "Bogardan Firefiend");
         opponent.setup.battlefield("Gristle Grinner", "[#1] Plague Spitter", "[#2] Plague Spitter");
         user.playLand("Mountain").expectTrigger("Omnath, Locus of Rage", 0);
+        user.expectToken("Elemental Token").label("<Omnath's Elemental>");
+
+        then();
         user.cast("Lightning Bolt").target("[#1] Plague Spitter");
         user.respond("Lava Dart").target("[#2] Plague Spitter").expectDamage(1, "[#2] Plague Spitter");
         expectDeath("[#1] Plague Spitter");
@@ -54,7 +57,7 @@ public class TestBasicGameLogic extends GameLogicTest {
         opponent.orderStack("<Gristle Grows>", "<Plague Spit>");
 
         then(); //Resolve stack.
-        expectDamage(1, "Player 1", "Player 2", "Bogardan Firefiend", "Gristle Grinner", "Omnath, Locus of Rage", "[#2] Plague Spitter");
+        expectDamage(1, "Player 1", "Player 2", "Bogardan Firefiend", "Gristle Grinner", "Omnath, Locus of Rage", "<Omnath's Elemental>", "[#2] Plague Spitter");
         expectDeath("[#2] Plague Spitter", "Bogardan Firefiend");
         assertPT(5, 5, "Gristle Grinner");
 
@@ -65,7 +68,7 @@ public class TestBasicGameLogic extends GameLogicTest {
         expectTriggers("Gristle Grinner", 2);
 
         then(); //Resolve all those.
-        expectDamage(1, "Player 1", "Player 2", "Omnath, Locus of Rage", "Gristle Grinner"); //Plague Spitter
+        expectDamage(1, "Player 1", "Player 2", "Omnath, Locus of Rage", "<Omnath's Elemental>", "Gristle Grinner"); //Plague Spitter
         expectDamage(2, "Gristle Grinner"); //Firefiend
         expectDamage(3, "Gristle Grinner"); //Omnath
 
