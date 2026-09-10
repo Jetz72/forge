@@ -122,17 +122,17 @@ abstract class TestReference <T extends IIdentifiable> implements ITestReference
                 throw new IllegalArgumentException("Syntax error in reference: " + implicitReference);
         }
 
-        public void putLiveCards(String label, Set<Card> cards) {
+        public void putLiveCards(String label, Set<? extends IIdentifiable> cards) {
             label = wrapLiveLabelText(label);
             if(livePool.containsKey(label)) {
                 LiveReference<?> current = livePool.get(label);
                 if(!(current instanceof LiveCardReference cardRef))
                     throw new GameLogicTestException("Tried to resolve %s as a card reference, but it was defined as '%s'.", label, current.getClass());
-                if(current.resolved == null) {
+                if(!current.isResolved()) {
                     cardRef.setResolved(cards);
                     return;
                 }
-                if(!cards.equals(current.resolved))
+                if(!current.matchesResolved(cards))
                     throw new GameLogicTestException("Tried to resolve %s twice with different data. Original: %s; New: %s", label, current.resolved, cards);
                 return;
             }
@@ -152,7 +152,7 @@ abstract class TestReference <T extends IIdentifiable> implements ITestReference
                     stackRef.setResolved(stack);
                     return;
                 }
-                if(!stack.equals(current.resolved))
+                if(!current.matchesResolved(stack))
                     throw new GameLogicTestException("Tried to resolve %s twice with different data. Original: %s; New: %s", label, current.resolved, stack);
                 return;
             }
@@ -223,6 +223,10 @@ abstract class TestReference <T extends IIdentifiable> implements ITestReference
 
         /* package */ Collection<PlayerReference> getAllPlayerReferences() {
             return playerPool.values();
+        }
+
+        /* package */ int getMaxID() {
+            return this.maxID;
         }
     }
 }

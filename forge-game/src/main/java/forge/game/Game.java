@@ -552,8 +552,12 @@ public class Game {
      * collide with ids handed out for cards created after the copy.
      */
     public void dangerouslySyncCardIdCounters(Game from) {
-        this.cardIdCounter = from.cardIdCounter;
-        this.hiddenCardIdCounter = from.hiddenCardIdCounter;
+        dangerouslySetCardIdCounters(from.cardIdCounter, from.hiddenCardIdCounter);
+    }
+
+    public void dangerouslySetCardIdCounters(int cardIdCounter, int hiddenCardIdCounter) {
+        this.cardIdCounter = cardIdCounter;
+        this.hiddenCardIdCounter = hiddenCardIdCounter;
     }
 
     public final GameOutcome getOutcome() {
