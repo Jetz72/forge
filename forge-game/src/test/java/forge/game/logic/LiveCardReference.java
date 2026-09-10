@@ -17,6 +17,10 @@ public class LiveCardReference extends LiveReference<Card> implements ICardRefer
     }
 
     void setResolved(Collection<? extends IIdentifiable> resolved) {
+        for (IIdentifiable i : resolved) {
+            if (!(i instanceof Card || i instanceof CardView))
+                throw new GameLogicTestException("%s - expected to resolve to type 'Card' or 'CardView'; got '%s'", this, i.getClass());
+        }
         super.setResolved(resolved);
     }
 
@@ -32,7 +36,7 @@ public class LiveCardReference extends LiveReference<Card> implements ICardRefer
 
     @Override
     public boolean refersTo(IIdentifiable o) {
-        return o instanceof Card && ids.contains(o.getId());
+        return (o instanceof Card || o instanceof CardView) && this.resolved.contains(o.getId());
     }
 
     @Override

@@ -92,7 +92,6 @@ public class GameLogicTestActionQueue {
     /* package */ void advancePriority(Game game) {
         this.runAsserts(game, true);
         assertNoPendingCriteriaItems();
-        this.thenCount = 0;
         this.lastActedTurn = game.getPhaseHandler().getTurn();
         if(queue.isEmpty()) {
             //We're done.
@@ -106,6 +105,7 @@ public class GameLogicTestActionQueue {
         }
 
         this.advanceCriteriaBlock();
+        this.thenCount = 0;
     }
 
     /* package */ ActionItemPriority peekPriority() {
@@ -605,8 +605,21 @@ public class GameLogicTestActionQueue {
             return item;
         }
 
-        private ActionQueueProxy_Label expectToken(String tokenScript) {
+        default ActionQueueProxy_Label expectToken(String tokenName) {
+            return this.expectTokens(Map.of(tokenName, 1));
+        }
+
+        default ActionQueueProxy_Label expectTokens(String tokenName, int tokenAmount) {
+            return this.expectTokens(Map.of(tokenName, tokenAmount));
+        }
+
+        default ActionQueueProxy_Label expectTokens(Map<String, Integer> tokenNamesAndAmounts) {
             applyPlayerIndexOverride();
+            PlayerReference playerRef = getWorkingPlayerRef();
+            GameLogicTestActionQueue queue = getQueue();
+            ActionItemExpectation.ExpectToken item = new ActionItemExpectation.ExpectToken(queue, playerRef, tokenNamesAndAmounts);
+            queue.push(item);
+            return item;
         }
 
         default ActionQueueProxy assertZone(ZoneType zone, String... cardRefs) {
