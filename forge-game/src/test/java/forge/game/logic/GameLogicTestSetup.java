@@ -1,5 +1,6 @@
 package forge.game.logic;
 
+import forge.game.Game;
 import forge.game.GameRules;
 import forge.game.GameState;
 import forge.game.GameType;
@@ -15,6 +16,8 @@ public class GameLogicTestSetup extends GameState {
     public final PlayerSetup opponent;
 
     /* package */ final CardReference.ReferencePool referencePool;
+
+    protected int maxID;
 
     public static class PlayerSetup extends GameState.PlayerState {
         public final int index;
@@ -142,6 +145,12 @@ public class GameLogicTestSetup extends GameState {
         return true;
     }
 
+    @Override
+    protected void applyGameOnThread(Game game) {
+        super.applyGameOnThread(game);
+        game.dangerouslySetCardIdCounters(this.maxID, 0);
+    }
+
     /* package */ GameRules getGameRules() {
         GameRules out = new GameRules(GameType.Constructed);
         out.setPlayForAnte(false);
@@ -224,6 +233,8 @@ public class GameLogicTestSetup extends GameState {
         //TODO: Infer starting phase/turn.
         if("NONE".equals(tChangePhase))
             tChangePhase = "MAIN1";
+
+        this.maxID = queue.referencePool.getMaxID();
 
         //Assign cards to players.
         Map<Integer, Map<ZoneType, List<CardReference>>> cardsPerZonePerPlayer = new HashMap<>(4);
