@@ -4,6 +4,8 @@ import forge.game.logic.GameLogicTest;
 import forge.game.zone.ZoneType;
 import org.testng.annotations.Test;
 
+import java.util.Map;
+
 public class TestBasicGameLogic extends GameLogicTest {
     @Test
     void testBoltBird() {
@@ -36,6 +38,19 @@ public class TestBasicGameLogic extends GameLogicTest {
         user.playLand("Mikokoro, Center of the Sea");
         assertZone(ZoneType.Hand, "Grizzly Bears", "Plains", "[3x] Mountain");
         assertZone(ZoneType.Battlefield, "Mikokoro, Center of the Sea");
+    }
+
+    @Test
+    void testTokens() {
+        user.setup.battlefield("Academy Manufactor");
+        cast("Bestial Menace").expectTokens("Snake Token", "Wolf Token", "Elephant Token").label("<Animals>");
+        cast("Descent of the Dragons").target("<Animals>");
+        user.expectTokens("Dragon Token", 3);
+        expectDeath("<Animals>");
+        cast("Hell to Pay").withXValue(5).target("[Opponent's] Birds of Paradise");
+        user.expectTokens(Map.of("Treasure Token", 4, "Clue Token", 4, "Food Token", 4)).label("<Stuff>");
+        then();
+        assertTapped("<Stuff>");
     }
 
     @Test

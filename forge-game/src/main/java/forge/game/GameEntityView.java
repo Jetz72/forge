@@ -12,8 +12,9 @@ import forge.trackable.TrackableCollection;
 import forge.trackable.TrackableObject;
 import forge.trackable.TrackableProperty;
 import forge.trackable.Tracker;
+import forge.util.IHasName;
 
-public abstract class GameEntityView extends TrackableObject {
+public abstract class GameEntityView extends TrackableObject implements IHasName {
     private static final long serialVersionUID = -5129089945124455670L;
 
     public static GameEntityView get(GameEntity e) {

@@ -2,9 +2,7 @@ package forge.game.logic;
 
 import forge.StaticData;
 import forge.game.IIdentifiable;
-import forge.game.card.Card;
 import forge.game.spellability.SpellAbility;
-import forge.game.spellability.SpellAbilityStackInstance;
 import forge.game.zone.ZoneType;
 
 import java.util.*;

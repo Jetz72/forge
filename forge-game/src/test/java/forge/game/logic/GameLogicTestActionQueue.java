@@ -2,6 +2,7 @@ package forge.game.logic;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
+import com.google.common.collect.Maps;
 import com.google.common.eventbus.Subscribe;
 import forge.game.Game;
 import forge.game.ability.AbilityKey;
@@ -609,6 +610,10 @@ public class GameLogicTestActionQueue {
             return this.expectTokens(Map.of(tokenName, 1));
         }
 
+        default ActionQueueProxy_Label expectTokens(String... tokenNames) {
+            return this.expectTokens(Maps.asMap(Set.of(tokenNames), i -> 1));
+        }
+
         default ActionQueueProxy_Label expectTokens(String tokenName, int tokenAmount) {
             return this.expectTokens(Map.of(tokenName, tokenAmount));
         }
@@ -641,6 +646,22 @@ public class GameLogicTestActionQueue {
                 public void doAssert(Game game) {
                     assertForAll(game, Card::getNetPower, power, "power");
                     assertForAll(game, Card::getNetToughness, toughness, "toughness");
+                }
+            };
+            queue.push(item);
+            return item;
+        }
+
+        default ActionQueueProxy assertTapped(String... cardRefs) {
+            return assertTapped(true, cardRefs);
+        }
+
+        default ActionQueueProxy assertTapped(boolean isTapped, String... cardRefs) {
+            GameLogicTestActionQueue queue = getQueue();
+            ActionItem item = new ActionItemAssertion(queue, getCardRefs(cardRefs)) {
+                @Override
+                public void doAssert(Game game) {
+                    assertForAll(game, Card::isTapped, isTapped, "tapped");
                 }
             };
             queue.push(item);

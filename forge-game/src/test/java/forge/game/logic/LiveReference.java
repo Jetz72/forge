@@ -2,8 +2,10 @@ package forge.game.logic;
 
 import forge.game.Game;
 import forge.game.IIdentifiable;
+import forge.util.IHasName;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -15,6 +17,7 @@ abstract class LiveReference <T extends IIdentifiable> implements ITestReference
 
     protected Set<Integer> resolved;
     private String requireSingularError = null;
+    private Map<String, Integer> namesAndAmounts;
 
     LiveReference(String label) {
         this.label = label;
@@ -25,6 +28,11 @@ abstract class LiveReference <T extends IIdentifiable> implements ITestReference
         if(this.requireSingularError != null && resolved.size() > 1)
             throw new UnsupportedOperationException(this.requireSingularError);
         this.resolved = resolved.stream().map(IIdentifiable::getId).collect(Collectors.toSet());
+        this.namesAndAmounts = resolved.stream().collect(Collectors.toMap(
+                i -> (i instanceof IHasName n) ? n.getName() : i.toString(),
+                i -> 1,
+                Integer::sum)
+        );
     }
 
     @Override
@@ -57,6 +65,8 @@ abstract class LiveReference <T extends IIdentifiable> implements ITestReference
 
     @Override
     public String toString() {
-        return String.format("<%s>", this.label);
+        if(this.namesAndAmounts != null)
+            return String.format("'%s' %s", this.label, GameLogicTestUtils.formatNamesAndAmounts(this.namesAndAmounts));
+        return String.format("'%s'", this.label);
     }
 }
