@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 public class GameLogicTestUtils {
     private GameLogicTestUtils() { }
@@ -142,5 +143,14 @@ public class GameLogicTestUtils {
         if (cost.getGenericCost() > 0)
             out.merge("Wastes", cost.getGenericCost(), Integer::sum);
         return out;
+    }
+
+    public static String formatNamesAndAmounts(Map<String, Integer> tokenNamesAndAmounts) {
+        if(tokenNamesAndAmounts.isEmpty())
+            return "[]";
+        String out = tokenNamesAndAmounts.entrySet().stream()
+                .map(e -> String.format("%dx %s", e.getValue(), e.getKey()))
+                .collect(Collectors.joining(", "));
+        return "[" + out + "]";
     }
 }

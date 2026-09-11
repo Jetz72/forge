@@ -234,8 +234,6 @@ public class GameLogicTestSetup extends GameState {
         if("NONE".equals(tChangePhase))
             tChangePhase = "MAIN1";
 
-        this.maxID = queue.referencePool.getMaxID();
-
         //Assign cards to players.
         Map<Integer, Map<ZoneType, List<CardReference>>> cardsPerZonePerPlayer = new HashMap<>(4);
 
@@ -261,5 +259,7 @@ public class GameLogicTestSetup extends GameState {
             CardReference placeholders = player.padDeck ? referencePool.loadDeckPlaceholders(player.index) : null;
             player.putResolvedCardLists(nonLands, lands, placeholders);
         }
+
+        this.maxID = queue.referencePool.getMaxID();
     }
 }

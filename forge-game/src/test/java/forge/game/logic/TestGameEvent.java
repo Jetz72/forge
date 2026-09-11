@@ -1,7 +1,6 @@
 package forge.game.logic;
 
 import forge.game.ability.AbilityKey;
-import forge.game.card.CardView;
 import forge.game.event.GameEvent;
 import forge.game.event.IGameEventVisitor;
 import forge.game.spellability.SpellAbility;

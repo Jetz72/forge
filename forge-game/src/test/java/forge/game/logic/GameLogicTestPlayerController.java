@@ -1069,6 +1069,7 @@ public class GameLogicTestPlayerController extends PlayerController {
     }
 
     private static final Comparator<ManaCostShard> STRICTEST_FIRST = Comparator.comparing(ManaCostShard::isGeneric).thenComparing(ManaCostShard::isMultiColor);
+    private static final List<MagicColor.Color> COLORS_WITH_COLORLESS_FIRST = List.of(MagicColor.Color.COLORLESS, MagicColor.Color.WHITE, MagicColor.Color.BLUE, MagicColor.Color.BLACK, MagicColor.Color.RED, MagicColor.Color.GREEN);
 
     @Override
     public boolean applyManaToCost(ManaCostBeingPaid toPay, SpellAbility ability, String prompt, ManaConversionMatrix matrix, boolean effect) {
@@ -1113,7 +1114,7 @@ public class GameLogicTestPlayerController extends PlayerController {
             ManaCostShard nextShard = toPay.getUnpaidShards().stream().min(STRICTEST_FIRST).orElseThrow();
             SpellAbility chosenSA = null;
 
-            manaAbilityLoop: for (MagicColor.Color shardColor : nextShard.isGeneric() ? Set.of(MagicColor.Color.values()) : nextShard.getColor()) { //Try all colors for hybrid shards. TODO: constant set.
+            manaAbilityLoop: for (MagicColor.Color shardColor : nextShard.isGeneric() ? COLORS_WITH_COLORLESS_FIRST : nextShard.getColor()) { //Try all colors for hybrid shards.
                 for (SpellAbility sa : colorToAbility.get(shardColor)) {
                     sa.setActivatingPlayer(player);
                     if(sa.canPlay()) {

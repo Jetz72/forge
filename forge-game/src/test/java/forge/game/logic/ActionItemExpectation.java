@@ -368,7 +368,7 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
 //        final List<CardResolvingConsumer> allConsumers;
 
         ExpectToken(GameLogicTestActionQueue queue, PlayerReference player, Map<String, Integer> tokenNamesAndAmounts) {
-            super(queue, Set.of(), "Expect tokens (%s): %s", player, formatNamesAndAmounts(tokenNamesAndAmounts));
+            super(queue, Set.of(), "Expect tokens (%s): %s", player, GameLogicTestUtils.formatNamesAndAmounts(tokenNamesAndAmounts));
             assert(tokenNamesAndAmounts.values().stream().noneMatch(i -> i == null || i <= 0));
             this.player = player;
             this.tokenNamesAndAmounts = tokenNamesAndAmounts;
@@ -413,14 +413,6 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
             return this;
         }
 
-        private static String formatNamesAndAmounts(Map<String, Integer> tokenNamesAndAmounts) {
-            if(tokenNamesAndAmounts.isEmpty())
-                return "[]";
-            String out = tokenNamesAndAmounts.entrySet().stream()
-                    .map(e -> String.format("%dx %s", e.getValue(), e.getKey()))
-                    .collect(Collectors.joining(", "));
-            return "[" + out + "]";
-        }
     }
 
     @Override

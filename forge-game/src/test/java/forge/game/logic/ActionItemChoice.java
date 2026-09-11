@@ -32,8 +32,8 @@ abstract class ActionItemChoice extends GameLogicTestActionQueue.ActionItem {
             super(queue);
             this.targets = List.of(targets);
             this.cardTargets = Arrays.stream(targets)
-                    .filter(CardReference.class::isInstance)
-                    .map(CardReference.class::cast)
+                    .filter(ICardReference.class::isInstance)
+                    .map(ICardReference.class::cast)
                     .collect(Collectors.toList());
             this.playerTargets = Arrays.stream(targets)
                     .filter(PlayerReference.class::isInstance)
