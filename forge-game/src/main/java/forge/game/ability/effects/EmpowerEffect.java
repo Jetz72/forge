@@ -1,5 +1,6 @@
 package forge.game.ability.effects;
 
+import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang3.mutable.MutableBoolean;
@@ -70,11 +71,11 @@ public class EmpowerEffect extends TokenEffectBase {
             result.setName(type + " Token");
             result.setTokenSpawningAbility(sa);
 
-            makeTokenTable(makeTokenTableInternal(p, result, 1), false, triggerList, combatChanged, sa);
+            List<Card> tokens = makeTokenTable(makeTokenTableInternal(p, result, 1), false, triggerList, combatChanged, sa);
 
             triggerList.triggerChangesZoneAll(game, sa);
 
-            game.fireEvent(new GameEventTokenCreated());
+            game.fireEvent(new GameEventTokenCreated(tokens));
 
             if (combatChanged.isTrue()) {
                 game.updateCombatForView();
