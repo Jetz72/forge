@@ -1,7 +1,7 @@
 package forge.game.logic;
 
 import forge.game.Game;
-import forge.game.GameEntity;
+import forge.game.GameObject;
 import forge.game.IIdentifiable;
 import forge.game.cost.Cost;
 import forge.game.cost.CostPartMana;
@@ -16,13 +16,14 @@ import java.util.stream.Collectors;
 /**
  * Represents a decision to make while resolving a spell.
  */
-abstract class ActionItemChoice extends GameLogicTestActionQueue.ActionItem {
+abstract class ActionItemChoice <C extends ChoiceConstraints<R>, R> extends GameLogicTestActionQueue.ActionItem {
     protected ActionItemChoice(GameLogicTestActionQueue queue) {
         super(queue);
     }
 
+    abstract R evaluate(Game game, C constraints);
 
-    static class Target extends ActionItemChoice implements GameLogicTestActionQueue.HasImplicitSetup {
+    static class Target extends ActionItemChoice<ChoiceConstraints.Target, Set<GameObject>> implements GameLogicTestActionQueue.HasImplicitSetup {
         final List<ITestReference<?>> targets;
         private final List<ICardReference> cardTargets;
         private final List<PlayerReference> playerTargets;
@@ -50,12 +51,34 @@ abstract class ActionItemChoice extends GameLogicTestActionQueue.ActionItem {
             return Set.copyOf(this.cardTargets);
         }
 
-        List<GameEntity> getResolvedTargets(Game game) {
-            ArrayList<GameEntity> out = new ArrayList<>(cardTargets.size() + playerTargets.size());
-            for(ICardReference r : cardTargets)
-                out.addAll(r.findCards(game));
-            for(PlayerReference r : playerTargets)
-                out.add(r.findPlayer(game));
+        @Override
+        Set<GameObject> evaluate(Game game, ChoiceConstraints.Target constraints) {
+            Set<GameObject> out = new HashSet<>(targets.stream().mapToInt(ITestReference::getQuantity).sum());
+            Set<SpellAbility> validSAs = constraints.pool().stream().filter(SpellAbility.class::isInstance).map(SpellAbility.class::cast).collect(Collectors.toSet());
+            for(ITestReference<?> r : targets) {
+                Set<? extends IIdentifiable> resolved = r.getResolved(game);
+                for(IIdentifiable item : resolved) {
+                    if(!(item instanceof GameObject i))
+                        throw new GameLogicTestException("Illegal type for resolved target %s.", r);
+                    if(!constraints.pool().contains(i)) {
+                        SpellAbility stackCandidate = validSAs.stream().filter(sa -> i.equals(sa.getHostCard())).findAny().orElse(null);
+                        if(stackCandidate != null) {
+                            out.add(stackCandidate);
+                            validSAs.remove(stackCandidate);
+                            continue;
+                        }
+                        //Otherwise let the containsAll test below catch it.
+                    }
+                    out.add(i);
+                }
+            }
+            if(!constraints.pool().containsAll(out))
+                throw new ChoiceConstraints.ChoiceConstraintException(this, "Invalid targets: %s", out.stream().filter(i -> !constraints.pool().contains(i)).collect(Collectors.toSet()));
+            if(out.size() < constraints.spellAbility().getMinTargets())
+                throw new ChoiceConstraints.ChoiceConstraintException(this, "Expected >= %d targets (%d provided)", constraints.spellAbility().getMinTargets(), out.size());
+            if(out.size() > constraints.spellAbility().getMaxTargets())
+                throw new ChoiceConstraints.ChoiceConstraintException(this, "Expected <= %d targets (%d provided)", constraints.spellAbility().getMaxTargets(), out.size());
+            //TODO: Other choice constraints. Maybe split a helper method out of InputSelectTargets
             return out;
         }
 
@@ -93,21 +116,36 @@ abstract class ActionItemChoice extends GameLogicTestActionQueue.ActionItem {
         }
     }
 
-    static abstract class Value<T> extends ActionItemChoice {
-        final T value;
+    static abstract class Value<C extends ChoiceConstraints<R>, R> extends ActionItemChoice<C, R> {
+        final R value;
 
-        Value(GameLogicTestActionQueue queue, T value) {
+        Value(GameLogicTestActionQueue queue, R value) {
             super(queue);
             this.value = value;
         }
 
         @Override Set<ICardReference> getCardRefs() { return Set.of(); }
 
-        public T getValue() { return this.value; }
+        public R getValue() { return this.value; }
+
+        @Override
+        public String toString() {
+            return "Value[" + this.value + "]";
+        }
     }
 
-    static class Number extends Value<Integer> {
+    static class Number extends Value<ChoiceConstraints.Range, Integer> {
         Number(GameLogicTestActionQueue queue, Integer value) { super(queue, value); }
+
+        @Override
+        Integer evaluate(Game game, ChoiceConstraints.Range constraints) {
+            if(this.value == null) //Explicitly cancelling the choice?
+                return null;
+            if((constraints.min() != null && this.value < constraints.min())
+                    || (constraints.max() != null && this.value > constraints.max()))
+                throw new ChoiceConstraints.ChoiceConstraintException(this, "value outside of range: %d < %d < %d", constraints.min(), this.value, constraints.max());
+            return this.value;
+        }
     }
 
     static class XValue extends Number implements GameLogicTestActionQueue.HasCostAdjustment {
@@ -126,7 +164,7 @@ abstract class ActionItemChoice extends GameLogicTestActionQueue.ActionItem {
         }
     }
 
-    abstract static class Order<T extends IIdentifiable> extends ActionItemChoice {
+    abstract static class Order<T extends IIdentifiable> extends ActionItemChoice<ChoiceConstraints.Ordering<T>, List<T>> {
         protected final List<? extends ITestReference<T>> order;
         protected final boolean reversed;
 
@@ -141,20 +179,22 @@ abstract class ActionItemChoice extends GameLogicTestActionQueue.ActionItem {
             return order.stream().filter(ICardReference.class::isInstance).map(ICardReference.class::cast).collect(Collectors.toSet());
         }
 
-        /* package */ List<T> applyTo(Collection<T> options) {
+        @Override
+        List<T> evaluate(Game game, ChoiceConstraints.Ordering<T> constraints) {
+            Collection<T> options = constraints.pool();
             Set<T> unused = new HashSet<>(options);
             List<T> out = new ArrayList<>(order.stream().mapToInt(ITestReference::getQuantity).sum());
             for(ITestReference<T> ref : this.order) {
                 Set<T> matchingOptions = unused.stream().filter(ref::refersTo).limit(ref.getQuantity()).collect(Collectors.toSet());
                 unused.removeAll(matchingOptions);
                 if(matchingOptions.isEmpty())
-                    throw new GameLogicTestException("Choosing Order - Missing item %s; Options: %s", ref, options);
+                    throw new ChoiceConstraints.ChoiceConstraintException(this, "Choosing Order - Missing item %s; Options: %s", ref, options);
                 if(matchingOptions.size() < ref.getQuantity())
-                    throw new GameLogicTestException("Choosing Order - Missing copies of %s; Expected %d, found %s; Options: %s", ref, ref.getQuantity(), matchingOptions.size(), options);
+                    throw new ChoiceConstraints.ChoiceConstraintException(this, "Choosing Order - Missing copies of %s; Expected %d, found %s; Options: %s", ref, ref.getQuantity(), matchingOptions.size(), options);
                 out.addAll(matchingOptions);
             }
             if(!unused.isEmpty()) {
-                throw new GameLogicTestException("Choosing Order - Unused options found: %s", unused);
+                throw new ChoiceConstraints.ChoiceConstraintException(this, "Choosing Order - Unused options found: %s", unused);
 //                this.queue.log("Choosing Order - Unused options found: %s", unused);
 //                out.addAll(unused);
             }
@@ -162,7 +202,6 @@ abstract class ActionItemChoice extends GameLogicTestActionQueue.ActionItem {
                 Collections.reverse(out);
             return out;
         }
-
 
     }
 

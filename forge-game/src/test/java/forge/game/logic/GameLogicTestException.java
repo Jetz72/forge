@@ -22,26 +22,31 @@ public class GameLogicTestException extends RuntimeException {
     protected static Object[] processFormatParams(Object... formatParams) {
         Object[] out = new Object[formatParams.length];
         for (int i = 0; i < formatParams.length; i++) {
-            Object o = formatParams[i];
-            if (o instanceof Player p)
-                out[i] = p.getName();
-            else if (o instanceof Card c)
-                out[i] = String.format("[ID#%d %s]", c.getId(), c.getName()); //Would like to get the original reference, but we'd need to get the reference pool here.
-            else if (o instanceof SpellAbility sa) {
-                Card c = sa.getHostCard();
-                out[i] = String.format("[ID#%d %s: %s]", c.getId(), c.getName(), StringUtils.abbreviate(sa.toString(), 32));
-            } //Collections of game objects can be stringified normally.
-            else if (o instanceof GameLogicTestActionQueue.ActionItem)
-                out[i] = String.format("(%s)", o);
-            else if (o instanceof TestReference)
-                out[i] = String.format("<%s>", o);
-            else if (o instanceof List<?> list)
-                out[i] = "[" + Arrays.stream(processFormatParams(list.toArray())).map(Object::toString).collect(Collectors.joining(", ")) + "]";
-            else if (o instanceof Set<?> set)
-                out[i] = "[" + Arrays.stream(processFormatParams(set.toArray())).map(Object::toString).collect(Collectors.joining(", ")) + "]";
-            else
-                out[i] = o;
+            out[i] = getLogString(formatParams[i]);
         }
         return out;
+    }
+
+    protected static String getLogString(Object o) {
+        String replacement;
+        if (o instanceof Player p)
+            replacement = p.getName();
+        else if (o instanceof Card c)
+            replacement = String.format("[ID#%d %s]", c.getId(), c.getName()); //Would like to get the original reference, but we'd need to get the reference pool here.
+        else if (o instanceof SpellAbility sa) {
+            Card c = sa.getHostCard();
+            replacement = String.format("[ID#%d %s: %s]", c.getId(), c.getName(), StringUtils.abbreviate(sa.toString(), 32));
+        } //Collections of game objects can be stringified normally.
+        else if (o instanceof GameLogicTestActionQueue.ActionItem actionItem)
+            replacement = String.format("(%s%s)", actionItem.isInverted() ? "Illegal" : "", actionItem);
+        else if (o instanceof TestReference)
+            replacement = String.format("<%s>", o);
+        else if (o instanceof List<?> list)
+            replacement = "[" + Arrays.stream(processFormatParams(list.toArray())).map(Object::toString).collect(Collectors.joining(", ")) + "]";
+        else if (o instanceof Set<?> set)
+            replacement = "[" + Arrays.stream(processFormatParams(set.toArray())).map(Object::toString).collect(Collectors.joining(", ")) + "]";
+        else
+            replacement = String.valueOf(o);
+        return replacement;
     }
 }

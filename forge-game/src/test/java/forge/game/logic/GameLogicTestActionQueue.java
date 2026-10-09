@@ -16,6 +16,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 //TODO: Fix the visibility across Action Items.
 public class GameLogicTestActionQueue {
@@ -188,15 +189,56 @@ public class GameLogicTestActionQueue {
         throw new GameLogicTestException(sb.toString());
     }
 
-    /* package */ <T extends ActionItemChoice> T getPendingChoiceOfType(Class<T> choiceType, int playerIndex) {
-        return this.criteriaBlock.stream().filter(c -> c.playerIndex == playerIndex).filter(choiceType::isInstance).map(choiceType::cast).findFirst().orElse(null);
+    <T extends ActionItemChoice<C, R>, C extends ChoiceConstraints<R>, R> R resolvePendingChoice(Class<T> choiceType, Game game, int playerIndex, C constraints) {
+        return resolvePendingChoice(choiceType, game, playerIndex, null, constraints, false);
     }
 
-    /* package */ <T extends ActionItemChoice> T getPendingChoiceOfType(Class<T> choiceType, Predicate<T> filter, int playerIndex) {
-        return this.criteriaBlock.stream().filter(c -> c.playerIndex == playerIndex).filter(choiceType::isInstance).map(choiceType::cast).filter(filter).findFirst().orElse(null);
+    <T extends ActionItemChoice<C, R>, C extends ChoiceConstraints<R>, R> R resolvePendingChoice(Class<T> choiceType, Game game, int playerIndex, Predicate<T> filter, C constraints) {
+        return resolvePendingChoice(choiceType, game, playerIndex, filter, constraints, false);
     }
 
-    /* package */ <T extends ActionItemChoice> void lookAheadAndFailIfChoiceOfType(Class<T> choiceType, Predicate<T> filter, int playerIndex) {
+    <T extends ActionItemChoice<C, R>, C extends ChoiceConstraints<R>, R> R resolvePendingChoice(Class<T> choiceType, Game game, int playerIndex, Predicate<T> filter, C constraints, boolean requireExplicit) {
+        List<T> pendingMatches = getPendingMatches(choiceType, filter, playerIndex);
+
+        for (int i = 0; i < pendingMatches.size(); i++) {
+            T match = pendingMatches.get(i);
+            try {
+                R result = match.evaluate(game, constraints);
+                if(match.isInverted()) //This wasn't supposed to be a valid option for the constraints.
+                    throw new GameLogicTestException("Expected choice %s to be illegal per constraints (%s), got result '%s'", match, constraints, result);
+                fulfillCriteria(match);
+                return result;
+            }
+            catch (ChoiceConstraints.ChoiceConstraintException e) {
+                if(match.isInverted()) {
+                    //Task failed successfully.
+                    log("Player %d: Verified choice illegal: %s", playerIndex + 1, match);
+                    fulfillCriteria(match);
+                }
+                else
+                    throw e;
+            }
+            if(i == pendingMatches.size() - 1) {
+                //Fulfilling a negative criteria may cause our criteria block to clear.
+                pendingMatches = getPendingMatches(choiceType, filter, playerIndex);
+                if(pendingMatches.isEmpty())
+                    break;
+                i = -1;
+            }
+        }
+        if(requireExplicit)
+            throw new GameLogicTestException("Expected a choice node - Type: %s; Constraints: %s", choiceType, constraints);
+        return null;
+    }
+
+    private <T extends ActionItemChoice<C, R>, C extends ChoiceConstraints<R>, R> List<T> getPendingMatches(Class<T> choiceType, Predicate<T> filter, int playerIndex) {
+        Stream<T> stream = this.criteriaBlock.stream().filter(c -> c.playerIndex == playerIndex).filter(choiceType::isInstance).map(choiceType::cast);
+        if(filter != null)
+            stream = stream.filter(filter);
+        return stream.toList();
+    }
+
+    /* package */ <T extends ActionItemChoice<?, ?>> void lookAheadAndFailIfChoiceOfType(Class<T> choiceType, Predicate<T> filter, int playerIndex) {
         if(this.unhandledCriteriaItems.stream().filter(c -> c.playerIndex == playerIndex).filter(choiceType::isInstance).map(choiceType::cast).anyMatch(filter))
             assertNoPendingCriteriaItems();
     }
@@ -338,6 +380,7 @@ public class GameLogicTestActionQueue {
         //Action items can't be defined in terms of actual game objects since they're written before the game begins
         final GameLogicTestActionQueue queue;
         final int playerIndex;
+        protected boolean isInverted = false;
 
         ActionItem(GameLogicTestActionQueue queue) {
             this.queue = queue;
@@ -352,6 +395,16 @@ public class GameLogicTestActionQueue {
         @Override
         public CardReference.ReferencePool getReferencePool() {
             return this.queue.referencePool;
+        }
+
+        @Override
+        public ActionQueueProxy ensureIllegal() {
+            this.isInverted = true;
+            return this;
+        }
+
+        public boolean isInverted() {
+            return isInverted;
         }
 
         public int getPlayerIndex() {
@@ -403,6 +456,10 @@ public class GameLogicTestActionQueue {
 
         default int getPlayerIndexOverride() {
             return -1;
+        }
+
+        default ActionQueueProxy ensureIllegal() {
+            throw new UnsupportedOperationException("No immediately preceding node for ensureIllegal");
         }
 
         private void applyPlayerIndexOverride() {

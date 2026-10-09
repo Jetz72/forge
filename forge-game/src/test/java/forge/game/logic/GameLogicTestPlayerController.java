@@ -81,11 +81,12 @@ public class GameLogicTestPlayerController extends PlayerController {
 
     @Override
     public List<SpellAbility> orderSimultaneousSa(List<SpellAbility> activePlayerSAs) {
-        ActionItemChoice.OrderStack choice = queue.getPendingChoiceOfType(ActionItemChoice.OrderStack.class, playerIndex);
-        if(choice == null)
+        ChoiceConstraints.Ordering<SpellAbility> constraints = new ChoiceConstraints.Ordering<>(activePlayerSAs);
+        List<SpellAbility> out = queue.resolvePendingChoice(ActionItemChoice.OrderStack.class, getGame(), playerIndex, constraints);
+        if(out == null) {
+            log("Not ordering abilities: %s", activePlayerSAs);
             return activePlayerSAs;
-        queue.fulfillCriteria(choice);
-        List<SpellAbility> out = choice.applyTo(activePlayerSAs);
+        }
         log("Ordering abilities: %s", out);
         return out;
     }
@@ -224,27 +225,24 @@ public class GameLogicTestPlayerController extends PlayerController {
         //Mostly used for X-values. AI handles this within the API classes.
         Card host = ability.getHostCard();
         Cost cost = ability.getPayCosts();
-        ActionItemChoice.Number choice;
+        ChoiceConstraints.Range constraints = new ChoiceConstraints.Range(min, max == Integer.MAX_VALUE ? null : max);
+        Integer choice;
+        //ActionItemChoice.Number choice;
         if("X".equals(announce)) {
-            choice = queue.getPendingChoiceOfType(ActionItemChoice.XValue.class, playerIndex);
-            if(choice == null)
+            choice = queue.resolvePendingChoice(ActionItemChoice.XValue.class, getGame(), playerIndex, constraints);
+            if(choice == null) {
+                if(cost != null && !cost.isMandatory())
+                    return null; //Could theoretically choose null for non-mandatory costs? Don't think players can normally do this.
                 throw new GameLogicTestException("Needed an X value for %s, but none was provided.", ability);
-            if(cost != null && !cost.isMandatory() && choice.getValue() == null)
-                return null; //Could theoretically choose null for non-mandatory costs? Don't think players can normally do this.
+            }
         }
         else
-            choice = queue.getPendingChoiceOfType(ActionItemChoice.Number.class, playerIndex);
+            choice = queue.resolvePendingChoice(ActionItemChoice.Number.class, getGame(), playerIndex, constraints);
 
-        if(choice == null || choice.getValue() == null)
+        if(choice == null)
             throw new GameLogicTestException("Needed a chosen number for %s, but none was provided.", ability);
 
-        int value = choice.getValue();
-        if(value < min || value > max)
-            throw new GameLogicTestException("Expected choice is out of bounds. Chosen: %d; min: %d; max: %d", value, min, max);
-
-        queue.fulfillCriteria(choice);
-
-        return value;
+        return choice;
     }
 
     @Override
@@ -356,8 +354,6 @@ public class GameLogicTestPlayerController extends PlayerController {
         }
         mandatory &= hasEnoughCandidates;
 
-        ActionItemChoice.Target targetChoice = queue.getPendingChoiceOfType(ActionItemChoice.Target.class, t -> t.matchesSpellAbility(ability), this.playerIndex);
-
         if (!hasEnoughCandidates && !hasEnoughTargets) {
             //TODO: Flag a near-miss if there is a target specified?
             // Cancel ability if there aren't any valid Candidates
@@ -421,7 +417,11 @@ public class GameLogicTestPlayerController extends PlayerController {
             return ability.getTargets().add(validTargets.get(0));
         }
 
-        if(targetChoice == null) {
+        ChoiceConstraints.Target constraints = new ChoiceConstraints.Target(validTargets, ability);
+
+        Set<GameObject> targets = queue.resolvePendingChoice(ActionItemChoice.Target.class, getGame(), playerIndex, t -> t.matchesSpellAbility(ability), constraints);
+
+        if(targets == null) {
             if(ability.isTrigger()) //If we don't have a target now, but there's one in a future criteria block, then we've failed some criteria that we needed to resolve before we got here.
                 queue.lookAheadAndFailIfChoiceOfType(ActionItemChoice.Target.class, t -> t.matchesSpellAbility(ability), playerIndex);
             if(mandatory)
@@ -429,14 +429,7 @@ public class GameLogicTestPlayerController extends PlayerController {
             return false;
         }
 
-        List<GameEntity> targets = targetChoice.getResolvedTargets(getGame());
-        List<GameEntity> failedTargets = targets.stream().filter(t -> !ability.canTarget(t)).toList();
-        if(!failedTargets.isEmpty())
-            throw new GameLogicTestException("Failed to assign targets for %s: %s", ability, failedTargets);
         ability.getTargets().addAll(targets);
-        assert(candidates.containsAll(targets));
-        //TODO: Verify min and max targets
-        queue.fulfillCriteria(targetChoice);
         this.log("Assigned targets for %s: %s", ability, targets);
         //TODO: Be sure to handle divisionValues
         return true;
@@ -448,27 +441,15 @@ public class GameLogicTestPlayerController extends PlayerController {
                 .map(SpellAbilityStackInstance::getSpellAbility)
                 .filter(ability::canTargetSpellAbility)
                 .toList();
-        ActionItemChoice.Target targetChoice = queue.getPendingChoiceOfType(ActionItemChoice.Target.class, t -> t.matchesSpellAbility(ability), this.playerIndex);
-        if(targetChoice == null) {
+        ChoiceConstraints.Target constraints = new ChoiceConstraints.Target(candidates, ability);
+        Set<GameObject> targets = queue.resolvePendingChoice(ActionItemChoice.Target.class, getGame(), playerIndex, t -> t.matchesSpellAbility(ability), constraints);
+        if(targets == null) {
             if(mandatory)
                 throw new GameLogicTestException("Needed targets for %s, but none were assigned.", ability);
             return false;
         }
-        List<GameEntity> targets = targetChoice.getResolvedTargets(getGame());
-        //TODO: Disambiguate multiple abilities from a single host card. Guess resolved targets needs to be able to return SA's too?
-        Set<SpellAbility> targetSAs = new HashSet<>(targets.size());
-        getSAForTarget: for(GameEntity target : targets) {
-            for(SpellAbility candidate : candidates) {
-                if (candidate.getHostCard() == target && !targetSAs.contains(candidate)) {
-                    targetSAs.add(candidate);
-                    continue getSAForTarget;
-                }
-            }
-            throw new GameLogicTestException("Error assigning target for %s - Unable to target any SpellAbility on Stack from %s", ability, target);
-        }
-        ability.getTargets().addAll(targetSAs);
-        queue.fulfillCriteria(targetChoice);
-        this.log("Assigned targets for %s: %s", ability, targetSAs);
+        ability.getTargets().addAll(targets);
+        this.log("Assigned targets for %s: %s", ability, targets);
         return true;
     }
 
