@@ -51,7 +51,9 @@ abstract class ActionItemExpectation extends GameLogicTestActionQueue.ActionItem
         /** Indicates that the event was received and partially fulfills the expectation of this node. */
         CONSUMED,
         /** Indicates that the event was received and that this node's criteria is now complete. */
-        RESOLVED
+        RESOLVED;
+
+        boolean wasConsumed() {return this == CONSUMED || this == RESOLVED;}
     }
 
     abstract /* package */ ConsumeResult receiveEvent(GameEvent event);

@@ -25,6 +25,12 @@ abstract class ActionItemAssertion extends GameLogicTestActionQueue.ActionItem {
         return Set.copyOf(this.cards);
     }
 
+    @Override
+    public GameLogicTestActionQueue.ActionQueueProxy negate() {
+        //Rather than asserting that the state doesn't match a condition, just assert what condition it *should* match instead.
+        throw new UnsupportedOperationException("Can't assert a negative.");
+    }
+
     protected Stream<Card> streamResolvedCards(Game game) {
         return this.getCardRefs().stream()
                 .flatMap(ref -> ref.findCards(game).stream());

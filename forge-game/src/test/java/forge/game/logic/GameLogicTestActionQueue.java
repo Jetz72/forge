@@ -45,8 +45,18 @@ public class GameLogicTestActionQueue {
     private int lastActedTurn = 0;
 
     public final List<String> logBuffer = new ArrayList<>();
+    /**
+     * Holds received events that matched an event type we were listening for without matching the expected fields.
+     * These near-miss events are included in the log if the test fails due to the respective unmet expectation.
+     */
     private final ListMultimap<Class<? extends GameEvent>, String> expectNearMiss = ArrayListMultimap.create();
+    /**
+     * Expectations that listen for more than one event that have received the first event. It is expected for all
+     * such events to be received in a single batch, so if the priority ticks over with events here, we conclude that
+     * the received events did not meet the expectation and trigger a failure.
+     */
     private final Set<ActionItemExpectation> partiallyResolvedEvents = new HashSet<>();
+    private final Set<ActionItemExpectation> negativeExpectations = new HashSet<>();
 
     /* package */ GameLogicTestActionQueue(CardReference.ReferencePool referencePool) {
         this.referencePool = referencePool;
@@ -210,11 +220,8 @@ public class GameLogicTestActionQueue {
                 return result;
             }
             catch (ChoiceConstraints.ChoiceConstraintException e) {
-                if(match.isInverted()) {
-                    //Task failed successfully.
-                    log("Player %d: Verified choice illegal: %s", playerIndex + 1, match);
+                if(match.isInverted()) //Task failed successfully.
                     fulfillCriteria(match);
-                }
                 else
                     throw e;
             }
@@ -247,8 +254,12 @@ public class GameLogicTestActionQueue {
         assert(criteriaBlock.contains(criteria));
         if(criteria instanceof ActionItemExpectation expectation)
             this.log("Expectation resolved: %s", expectation.getDescription());
-//        else if(criteria instanceof ActionItemChoice choice)
-//            this.log("Choice applied: %s", choice);
+        else if(criteria instanceof ActionItemChoice<?, ?> choice) {
+            if(choice.isInverted())
+                this.log("Verified choice illegal: %s", choice);
+//          else //More readable if we just do these manually.
+//              this.log("Choice applied: %s", choice);
+        }
         this.criteriaBlock.remove(criteria);
         this.advanceCriteriaBlock();
     }
@@ -268,18 +279,31 @@ public class GameLogicTestActionQueue {
                 continue;
             }
             else if(result == ActionItemExpectation.ConsumeResult.CONSUMED) {
+                this.onEventConsumed(evItem, ev);
                 partiallyResolvedEvents.add(evItem);
             }
             this.log("Event accepted: %s", ev);
             if(result == ActionItemExpectation.ConsumeResult.RESOLVED) {
+                this.onEventConsumed(evItem, ev);
                 partiallyResolvedEvents.remove(evItem);
                 this.fulfillCriteria(evItem);
             }
             return;
         }
+        for (ActionItemExpectation evItem : negativeExpectations) {
+            if(evItem.receiveEvent(ev).wasConsumed())
+                throw new GameLogicTestException("Received event that was expected not to happen: %s", ev);
+        }
         if(foundType) {
             expectNearMiss.put(ev.getClass(), ev.toString());
         }
+    }
+
+    private void onEventConsumed(ActionItemExpectation evItem, GameEvent ev) {
+        if(evItem.isInverted())
+            throw new GameLogicTestException("Received event that was expected not to happen: %s", ev);
+        else //We found a criteria that accepts the event, so if an earlier criteria would fail due to it, that criteria is now obsolete.
+            negativeExpectations.removeIf(negExp -> negExp.receiveEvent(ev).wasConsumed());
     }
 
     /* package */ void log(String log, Object... formatArgs) {
@@ -360,6 +384,12 @@ public class GameLogicTestActionQueue {
     }
 
     private boolean advanceCriteriaBlock() {
+        if(criteriaBlock.stream().allMatch(n -> n instanceof ActionItemExpectation && n.isInverted())) {
+            //Nothing left in the queue except for events we expect NOT to occur.
+            //assertNoPartiallyFinishedEvents(); //Could use this if we want inverted multi-event expectations to gather all events before failure, but that seems messy.
+            criteriaBlock.stream().map(ActionItemExpectation.class::cast).forEach(negativeExpectations::add);
+            criteriaBlock.clear();
+        }
         if(!criteriaBlock.isEmpty() || unhandledCriteriaItems.isEmpty())
             return false;
         while(!unhandledCriteriaItems.isEmpty()) {
@@ -398,7 +428,7 @@ public class GameLogicTestActionQueue {
         }
 
         @Override
-        public ActionQueueProxy ensureIllegal() {
+        public ActionQueueProxy negate() {
             this.isInverted = true;
             return this;
         }
@@ -458,7 +488,7 @@ public class GameLogicTestActionQueue {
             return -1;
         }
 
-        default ActionQueueProxy ensureIllegal() {
+        default ActionQueueProxy negate() {
             throw new UnsupportedOperationException("No immediately preceding node for ensureIllegal");
         }
 
