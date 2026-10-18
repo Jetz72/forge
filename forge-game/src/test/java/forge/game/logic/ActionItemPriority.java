@@ -3,9 +3,11 @@ package forge.game.logic;
 import forge.game.Game;
 import forge.game.card.Card;
 import forge.game.cost.Cost;
+import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Represents an action to attempt next time this player has priority.
@@ -22,7 +24,8 @@ import java.util.Set;
         RESPOND,
         RESPOND_ACTIVATE,
         LAND_DROP,
-        SPECIAL_ACTION;
+        SPECIAL_ACTION,
+        WAIT;
         //Concede?
 
         boolean needEmptyStack() {
@@ -48,7 +51,8 @@ import java.util.Set;
         this.subject = subject;
         this.saIndex = saIndex;
         this.saKeyword = saKeyword;
-        subject.assertSingular();
+        if(subject != null)
+            subject.assertSingular();
     }
 
     protected ActionItemPriority(GameLogicTestActionQueue queue, ActionType type, ICardReference subject, int saIndex) {
@@ -61,7 +65,7 @@ import java.util.Set;
 
     @Override
     public String toString() {
-        return String.format("[%s] - %s(%s)", this.type.name(), this.subject.toString(), this.saKeyword == null ? String.valueOf(this.saIndex) : this.saKeyword);
+        return String.format("[p%d %s - %s(%s)]", this.playerIndex + 1, this.type.name(), this.subject.toString(), this.saKeyword == null ? String.valueOf(this.saIndex) : this.saKeyword);
     }
 
     @Override
@@ -127,12 +131,72 @@ import java.util.Set;
                 return false;
         }
 
+        return true;
+    }
+
+    boolean isLegal(GameLogicTestPlayerController controller) {
+        Game game = controller.getGame();
         SpellAbility sa = getSpellAbility(game);
 
         sa.setActivatingPlayer(controller.getPlayer());
-        if (!sa.canPlay(true))
-            return false;
+        return sa.canPlay(true);
+    }
 
-        return true;
+    static class PassUntil extends ActionItemPriority {
+        final Predicate<Player> condition;
+        final String description;
+        final boolean isPlayerScoped;
+
+        protected PassUntil(GameLogicTestActionQueue queue, Predicate<Player> condition, boolean playerScoped, String description) {
+            super(queue, ActionType.WAIT, null, -1);
+            this.condition = condition;
+            this.isPlayerScoped = playerScoped;
+            this.description = description;
+        }
+
+        @Override
+        public String toString() {
+            if(isPlayerScoped)
+                return String.format("[p%d WAIT until: %s]", this.playerIndex + 1, this.description);
+            return String.format("[WAIT until: %s]", this.description);
+        }
+
+        @Override
+        public GameLogicTestActionQueue.ActionQueueProxy negate() {
+            //This action is never illegal.
+            throw new UnsupportedOperationException("Can't negate a .waitFor node.");
+        }
+
+        @Override
+        Set<ICardReference> getCardRefs() {
+            return Set.of();
+        }
+
+        @Override
+        public SpellAbility getSpellAbility() {
+            return null;
+        }
+
+        @Override
+        SpellAbility getSpellAbility(Game game) {
+            return null;
+        }
+
+        @Override
+        Cost getEstimatedCost() {
+            return Cost.Zero;
+        }
+
+        @Override
+        boolean isReady(GameLogicTestPlayerController controller) {
+            if(this.isPlayerScoped && !matchesPlayer(controller))
+                return false;
+            return this.condition.test(controller.getPlayer());
+        }
+
+        @Override
+        boolean isLegal(GameLogicTestPlayerController controller) {
+            return true;
+        }
     }
 }

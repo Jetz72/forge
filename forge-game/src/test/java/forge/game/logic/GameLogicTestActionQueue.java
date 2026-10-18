@@ -9,7 +9,10 @@ import forge.game.ability.AbilityKey;
 import forge.game.card.Card;
 import forge.game.cost.Cost;
 import forge.game.event.*;
+import forge.game.phase.PhaseType;
+import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
+import forge.game.spellability.SpellAbilityStackInstance;
 import forge.game.trigger.Trigger;
 import forge.game.zone.ZoneType;
 
@@ -102,12 +105,16 @@ public class GameLogicTestActionQueue {
     //Stuff for actually running the queue.
 
     /* package */ void advancePriority(Game game) {
-        this.runAsserts(game, true);
         assertNoPendingCriteriaItems();
         this.lastActedTurn = game.getPhaseHandler().getTurn();
         if(queue.isEmpty()) {
             //We're done.
             this.activePriorityItem = null;
+            if(!negativeExpectations.isEmpty()) {
+                log("Never received events: ");
+                for(ActionItemExpectation e : negativeExpectations)
+                    log(" - %s", e);
+            }
             return;
         }
         assert(queue.peekFirst() instanceof ActionItemPriority);
@@ -123,7 +130,52 @@ public class GameLogicTestActionQueue {
     /* package */ ActionItemPriority peekPriority() {
         if(queue.isEmpty())
             return null;
-        return (ActionItemPriority) queue.peekFirst();
+        ActionItemPriority next = (ActionItemPriority) queue.peekFirst();
+        if(!next.isInverted())
+            return next;
+        //We have one or more expected-to-fail actions before the real one. Fetch the real one.
+        for(ActionItem i : queue) {
+            if(!(i instanceof ActionItemPriority priority))
+                throw new UnsupportedOperationException("A negated action must either precede a priority node or follow a waitFor node. Negative Priority: " + next + "; Next Non-Priority: " + i);
+            if(priority.type == ActionItemPriority.ActionType.WAIT)
+                throw new UnsupportedOperationException("Negated actions should be placed immediately after .waitFor nodes, not before. Negative Priority: " + next + "; Next Non-Priority: " + i);
+            if(!priority.isInverted())
+                return priority;
+        }
+        throw new UnsupportedOperationException("A negated action must either precede a priority node or follow a waitFor node. Negative Priority: " + next + "; Next Non-Priority: end of test");
+    }
+
+    /* package */ List<ActionItemPriority> gatherNegativePriorityNodes() {
+        assertNoPendingCriteriaItems();
+        List<ActionItemPriority> out = new ArrayList<>();
+        if(queue.isEmpty())
+            return out;
+        Iterator<ActionItem> iterator = queue.iterator();
+        assert(queue.peekFirst() instanceof ActionItemPriority);
+        //Gather all the negative priority nodes before the next positive one.
+        while(iterator.hasNext()) {
+            ActionItem i = iterator.next();
+            if(!(i instanceof ActionItemPriority priority))
+                throw new UnsupportedOperationException("A negated action must either precede a priority node or follow a waitFor node. Negative Priority: " + out.get(0) + "; Next Non-Priority: " + i);
+            if(!priority.isInverted())
+                break;
+            iterator.remove();
+            out.add(priority);
+        }
+        if(queue.isEmpty()) //&& !out.isEmpty() logically necessary.
+            throw new UnsupportedOperationException("A negated action must either precede a priority node or follow a waitFor node. Negative Priority: " + out.get(0) + "; Next Non-Priority: end of test");
+        assert(queue.peekFirst() != null && queue.peekFirst() instanceof ActionItemPriority p && !p.isInverted());
+        if(((ActionItemPriority) queue.peekFirst()).type == ActionItemPriority.ActionType.WAIT) {
+            //Gather all the negative priority nodes after the current one.
+            while (iterator.hasNext()) {
+                ActionItem i = iterator.next();
+                if (!(i instanceof ActionItemPriority priority) || !i.isInverted())
+                    break; //Found criteria items or the next priority action. Nothing more here.
+                iterator.remove();
+                out.add(priority);
+            }
+        }
+        return out;
     }
 
     /* package */ ActionItemPriority currentPriority() {
@@ -243,6 +295,10 @@ public class GameLogicTestActionQueue {
         if(filter != null)
             stream = stream.filter(filter);
         return stream.toList();
+    }
+
+    /* package */ <T extends ActionItemChoice<?, ?>> boolean hasPendingChoiceOfType(Class<T> choiceType, Predicate<T> filter, int playerIndex) {
+        return this.criteriaBlock.stream().filter(c -> c.playerIndex == playerIndex).filter(choiceType::isInstance).map(choiceType::cast).anyMatch(filter);
     }
 
     /* package */ <T extends ActionItemChoice<?, ?>> void lookAheadAndFailIfChoiceOfType(Class<T> choiceType, Predicate<T> filter, int playerIndex) {
@@ -411,6 +467,7 @@ public class GameLogicTestActionQueue {
         final GameLogicTestActionQueue queue;
         final int playerIndex;
         protected boolean isInverted = false;
+        private ActionItem chainedTo;
 
         ActionItem(GameLogicTestActionQueue queue) {
             this.queue = queue;
@@ -430,7 +487,13 @@ public class GameLogicTestActionQueue {
         @Override
         public ActionQueueProxy negate() {
             this.isInverted = true;
+            if(this.chainedTo != null)
+                this.chainedTo.negate();
             return this;
+        }
+
+        void setChainedTo(ActionItem item) {
+            this.chainedTo = item;
         }
 
         public boolean isInverted() {
@@ -489,7 +552,7 @@ public class GameLogicTestActionQueue {
         }
 
         default ActionQueueProxy negate() {
-            throw new UnsupportedOperationException("No immediately preceding node for ensureIllegal");
+            throw new UnsupportedOperationException("No immediately preceding node to negate");
         }
 
         private void applyPlayerIndexOverride() {
@@ -564,6 +627,54 @@ public class GameLogicTestActionQueue {
             return item;
         }
 
+        default ActionQueueProxy waitFor(PhaseType phase) {
+            return this.waitFor(p -> p.getGame().getPhaseHandler().is(phase, p), true, "Phase = " + phase.name());
+        }
+
+        default ActionQueueProxy waitFor(String playerRef, PhaseType phase) {
+            PlayerReference player = getPlayerRef(playerRef);
+            //Scopes to an external player here for a couple of reasons.
+            //If you use waitFor("opponent", MAIN1); opponent.cast(...), we won't have skipped the opponent's priority.
+            //You can also do user.waitFor("opponent", MAIN1).respond(...) to cast on an enemy turn, because we restore the override after this.
+            ActionQueueProxy item = this.waitFor(p -> p.getGame().getPhaseHandler().is(phase, p), player.playerIndex, "Phase = " + phase.name());
+            applyPlayerIndexOverride();
+            return item;
+        }
+
+        default ActionQueueProxy waitForStackEmpty() {
+            //Don't care who the active player is.
+            return this.waitFor(p -> p.getGame().getStack().isEmpty(), false, "Stack Empty");
+        }
+
+        default ActionQueueProxy waitForResolutionOf(String stackRef) {
+            ITestReference<?> spell = getRef(stackRef);
+            Predicate<SpellAbilityStackInstance> refersTo;
+            if(spell instanceof StackReference s)
+                refersTo = s::refersTo;
+            else if(spell instanceof ICardReference c) //Kind of a workaround, since getStackRef can't take in a concrete card reference as a spell. May generalize this later.
+                refersTo = (SpellAbilityStackInstance si) -> si.getSpellAbility().isSpell() && c.refersTo(si.getSpellAbility().getHostCard());
+            else
+                throw new IllegalArgumentException("Expected a card or stack reference: " + stackRef);
+            return this.waitFor(p -> p.getGame().getStack().stream().noneMatch(refersTo), false, spell + " is resolved");
+        }
+
+        private ActionQueueProxy waitFor(Predicate<Player> condition, boolean playerScoped, String description) {
+            if(playerScoped)
+                applyPlayerIndexOverride();
+            GameLogicTestActionQueue queue = getQueue();
+            ActionItem item = new ActionItemPriority.PassUntil(queue, condition, playerScoped, description);
+            queue.push(item);
+            return item;
+        }
+
+        private ActionQueueProxy waitFor(Predicate<Player> condition, int scopedToPlayer, String description) {
+            GameLogicTestActionQueue queue = getQueue();
+            queue.setWorkingPlayerIndex(scopedToPlayer);
+            ActionItem item = new ActionItemPriority.PassUntil(queue, condition, true, description);
+            queue.push(item);
+            return item;
+        }
+
         default ActionQueueProxy target(String... objectRefs) {
             applyPlayerIndexOverride();
             GameLogicTestActionQueue queue = getQueue();
@@ -594,6 +705,10 @@ public class GameLogicTestActionQueue {
             return this;
         }
 
+        default ActionQueueProxy expectDamage(String... objectRefs) {
+            return this.expectDamage(-1, objectRefs); //-1 for any amount.
+        }
+
         default ActionQueueProxy expectDamage(int amount, String... objectRefs) {
             GameLogicTestActionQueue queue = getQueue();
             ITestReference<?>[] refs = getRefs(objectRefs);
@@ -611,15 +726,18 @@ public class GameLogicTestActionQueue {
             ActionItemExpectation item = null;
             if(!cardRefs.isEmpty()) {
                 item = new ActionItemExpectation.ExpectMultiUnordered<>(queue, cardRefs, GameEventCardDamaged.class,
-                        (ev, ref) -> ref.refersTo(ev.card()) && amount == ev.amount(),
+                        (ev, ref) -> ref.refersTo(ev.card()) && (amount == -1 || amount == ev.amount()),
                         "%d damage dealt (card)", amount);
                 item.setInferredCardRefZone(ZoneType.Battlefield);
                 queue.push(item);
             }
             if(!playerRefs.isEmpty()) {
+                ActionItemExpectation prev = item;
                 item = new ActionItemExpectation.ExpectMultiUnordered<>(queue, playerRefs, GameEventPlayerDamaged.class,
-                        (ev, ref) -> ref.refersTo(ev.target()) && amount == ev.amount(),
+                        (ev, ref) -> ref.refersTo(ev.target()) && (amount == -1 || amount == ev.amount()),
                         "%d damage dealt (player)", amount);
+                if(prev != null)
+                    item.setChainedTo(prev);
                 queue.push(item);
             }
             assert(item != null); //Called with no references??

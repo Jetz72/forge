@@ -27,8 +27,8 @@ public class GameLogicTestException extends RuntimeException {
         return out;
     }
 
-    protected static String getLogString(Object o) {
-        String replacement;
+    protected static Object getLogString(Object o) {
+        Object replacement;
         if (o instanceof Player p)
             replacement = p.getName();
         else if (o instanceof Card c)
@@ -38,13 +38,15 @@ public class GameLogicTestException extends RuntimeException {
             replacement = String.format("[ID#%d %s: %s]", c.getId(), c.getName(), StringUtils.abbreviate(sa.toString(), 32));
         } //Collections of game objects can be stringified normally.
         else if (o instanceof GameLogicTestActionQueue.ActionItem actionItem)
-            replacement = String.format("(%s%s)", actionItem.isInverted() ? "Illegal" : "", actionItem);
+            replacement = String.format("(%s%s)", actionItem.isInverted() ? "[N!]" : "", actionItem);
         else if (o instanceof TestReference)
             replacement = String.format("<%s>", o);
         else if (o instanceof List<?> list)
             replacement = "[" + Arrays.stream(processFormatParams(list.toArray())).map(Object::toString).collect(Collectors.joining(", ")) + "]";
         else if (o instanceof Set<?> set)
             replacement = "[" + Arrays.stream(processFormatParams(set.toArray())).map(Object::toString).collect(Collectors.joining(", ")) + "]";
+        else if (o instanceof Integer)
+            replacement = o;
         else
             replacement = String.valueOf(o);
         return replacement;

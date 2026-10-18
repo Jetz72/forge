@@ -407,7 +407,8 @@ public class GameLogicTestPlayerController extends PlayerController {
                 }
             }
         }
-        else if (validTargets.size() == 1 && minTargets != 0 && ability.isTrigger() && !tgt.canTgtPlayer()) {
+        else if (validTargets.size() == 1 && minTargets != 0 && ability.isTrigger() && !tgt.canTgtPlayer()
+                && !queue.hasPendingChoiceOfType(ActionItemChoice.Target.class, t -> t.matchesSpellAbility(ability), playerIndex)) {
             //if only one valid target card for triggered ability, auto-target that card
             //only do this for triggered abilities to prevent auto-targeting when user chooses
             //to play a spell or activate an ability
@@ -812,23 +813,37 @@ public class GameLogicTestPlayerController extends PlayerController {
                 queue.runAsserts(game, false);
                 return null;
             }
-            queue.advancePriority(game);
+            handleAdvancePriority(game, null);
             game.setGameOver(GameEndReason.Draw);
             return null;
         }
 
-        if(!action.isReady(this)) {
+        if(!action.isReady(this) || !action.isLegal(this)) {
             queue.assertNoTimeout(game);
             queue.runAsserts(game, false);
             return null;
         }
 
-        queue.advancePriority(game);
+        handleAdvancePriority(game, action);
+
+        if(action.type == ActionItemPriority.ActionType.WAIT) //We waited until now, so see if we want to act immediately.
+            return chooseSpellAbilityToPlay();
 
         //TODO: This kinda probably shouldn't return a list.
         //Only apparent use case is so human players can shift-click a stack of lands to tap them all at once.
         //Return null to pass priority.
         return List.of(action.getSpellAbility(game));
+    }
+
+    private void handleAdvancePriority(Game game, ActionItemPriority action) {
+        queue.runAsserts(game, true);
+        List<ActionItemPriority> negativePriority = queue.gatherNegativePriorityNodes();
+        for(ActionItemPriority node : negativePriority) {
+            if(node.isLegal(this))
+                throw new GameLogicTestException("Expected node %s to be illegal; isLegal returned true. Next node: %s", node, action != null ? action : "end of test");
+            log("Verified action illegal: %s", node);
+        }
+        queue.advancePriority(game);
     }
 
     @Override

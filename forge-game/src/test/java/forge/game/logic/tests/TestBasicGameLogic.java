@@ -90,4 +90,30 @@ public class TestBasicGameLogic extends GameLogicTest {
         then(); //Since the non-active player's trigger resolves first, Gristle Grinner will grow before the damage can kill it.
         assertPT(9, 9, "Gristle Grinner");
     }
+
+    @Test
+    void testWaitingAndIllegalActions() {
+        opponent.setup.battlefield("Grizzly Bears");
+        user.playLand("Forest");
+
+        user.playLand("Plains").negate(); //One land per turn.
+        user.cast("Lightning Bolt");
+        user.target("Forest").negate(); //Can't target a land.
+        user.target("Lightning Bolt").negate(); //Can't target itself.
+        user.target("Grizzly Bears");
+
+        expectDamage("Grizzly Bears").negate(); //Expect no damage to be taken.
+
+        opponent.respond("Confidence from Strength").negate(); //Can't respond with a sorcery.
+        opponent.respond("Fae Flight");
+        opponent.target("Player 2").negate(); //Can't target a player.
+        opponent.target("Grizzly Bears");
+
+        opponent.expectTrigger("Fae Flight");
+
+        user.waitForResolutionOf("Fae Flight"); //Not sure if I like this being after the trigger choices are made, but that's when priority is given...
+        user.respond("Plummet").target("Grizzly Bears");
+
+        expectDeath("Grizzly Bears", "Fae Flight");
+    }
 }
