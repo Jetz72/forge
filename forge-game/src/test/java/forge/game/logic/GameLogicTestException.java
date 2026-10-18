@@ -38,7 +38,7 @@ public class GameLogicTestException extends RuntimeException {
             replacement = String.format("[ID#%d %s: %s]", c.getId(), c.getName(), StringUtils.abbreviate(sa.toString(), 32));
         } //Collections of game objects can be stringified normally.
         else if (o instanceof GameLogicTestActionQueue.ActionItem actionItem)
-            replacement = String.format("(%s%s)", actionItem.isInverted() ? "[N!]" : "", actionItem);
+            replacement = String.format("(%s%s)", actionItem.isInverted() ? "[N!] " : "", actionItem);
         else if (o instanceof TestReference)
             replacement = String.format("<%s>", o);
         else if (o instanceof List<?> list)

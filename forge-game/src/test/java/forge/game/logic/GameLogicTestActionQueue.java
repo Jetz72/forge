@@ -272,8 +272,10 @@ public class GameLogicTestActionQueue {
                 return result;
             }
             catch (ChoiceConstraints.ChoiceConstraintException e) {
-                if(match.isInverted()) //Task failed successfully.
+                if(match.isInverted()) { //Task failed successfully.
                     fulfillCriteria(match);
+                        this.log("Player %d:      Verified choice illegal: %s", playerIndex + 1, match);
+                }
                 else
                     throw e;
             }
@@ -309,13 +311,11 @@ public class GameLogicTestActionQueue {
     /* package */ void fulfillCriteria(ActionItem criteria) {
         assert(criteriaBlock.contains(criteria));
         if(criteria instanceof ActionItemExpectation expectation)
-            this.log("Expectation resolved: %s", expectation.getDescription());
-        else if(criteria instanceof ActionItemChoice<?, ?> choice) {
-            if(choice.isInverted())
-                this.log("Verified choice illegal: %s", choice);
+            this.log("  Global: Expectation resolved: %s", expectation.getDescription());
+//        else if(criteria instanceof ActionItemChoice<?, ?> choice) {
 //          else //More readable if we just do these manually.
 //              this.log("Choice applied: %s", choice);
-        }
+//        }
         this.criteriaBlock.remove(criteria);
         this.advanceCriteriaBlock();
     }
@@ -338,7 +338,7 @@ public class GameLogicTestActionQueue {
                 this.onEventConsumed(evItem, ev);
                 partiallyResolvedEvents.add(evItem);
             }
-            this.log("Event accepted: %s", ev);
+            this.log("  Global: Event accepted: %s", ev);
             if(result == ActionItemExpectation.ConsumeResult.RESOLVED) {
                 this.onEventConsumed(evItem, ev);
                 partiallyResolvedEvents.remove(evItem);
@@ -725,17 +725,25 @@ public class GameLogicTestActionQueue {
             }
             ActionItemExpectation item = null;
             if(!cardRefs.isEmpty()) {
-                item = new ActionItemExpectation.ExpectMultiUnordered<>(queue, cardRefs, GameEventCardDamaged.class,
-                        (ev, ref) -> ref.refersTo(ev.card()) && (amount == -1 || amount == ev.amount()),
+                if(amount != -1)
+                    item = new ActionItemExpectation.ExpectMultiUnordered<>(queue, cardRefs, GameEventCardDamaged.class,
+                        (ev, ref) -> ref.refersTo(ev.card()) && amount == ev.amount(),
                         "%d damage dealt (card)", amount);
+                else
+                    item = new ActionItemExpectation.ExpectMultiUnordered<>(queue, cardRefs, GameEventCardDamaged.class,
+                            (ev, ref) -> ref.refersTo(ev.card()), "damage dealt (card)");
                 item.setInferredCardRefZone(ZoneType.Battlefield);
                 queue.push(item);
             }
             if(!playerRefs.isEmpty()) {
                 ActionItemExpectation prev = item;
-                item = new ActionItemExpectation.ExpectMultiUnordered<>(queue, playerRefs, GameEventPlayerDamaged.class,
-                        (ev, ref) -> ref.refersTo(ev.target()) && (amount == -1 || amount == ev.amount()),
-                        "%d damage dealt (player)", amount);
+                if(amount != -1)
+                    item = new ActionItemExpectation.ExpectMultiUnordered<>(queue, playerRefs, GameEventPlayerDamaged.class,
+                            (ev, ref) -> ref.refersTo(ev.target()) && amount == ev.amount(),
+                            "%d damage dealt (player)", amount);
+                else
+                    item = new ActionItemExpectation.ExpectMultiUnordered<>(queue, playerRefs, GameEventPlayerDamaged.class,
+                            (ev, ref) -> ref.refersTo(ev.target()), "damage dealt (player)");
                 if(prev != null)
                     item.setChainedTo(prev);
                 queue.push(item);
