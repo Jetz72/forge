@@ -37,6 +37,7 @@ public enum StaticAbilityMode {
     CantBlockBy,
     CanAttackIfHaste,
     CanBlockIfReach,
+    CanBlockIfShadow,
     MinMaxBlocker,
     BlockTapped,
     AttackVigilance,
@@ -52,6 +53,7 @@ public enum StaticAbilityMode {
 
     // StaticAbilityCombatDamageToughness
     CombatDamageToughness,
+    CombatDamageNegatePower,
 
     // StaticAbilityColorlessDamageSource
     ColorlessDamageSource,
@@ -109,6 +111,9 @@ public enum StaticAbilityMode {
 
     // StaticAbilityCantDraw
     CantDraw,
+
+    // StaticAbilityDrawFromBottom
+    DrawFromBottom,
 
     // StaticAbilityCantDiscard
     CantDiscard,
